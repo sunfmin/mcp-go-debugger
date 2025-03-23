@@ -466,4 +466,328 @@ func waitForServer(addr string) error {
 		time.Sleep(100 * time.Millisecond)
 	}
 	return fmt.Errorf("timeout waiting for server")
+}
+
+// Continue resumes program execution until next breakpoint or program termination
+func (c *Client) Continue() error {
+	if c.client == nil {
+		return fmt.Errorf("no active debug session")
+	}
+
+	log.Println("DEBUG: Continuing execution")
+	
+	// Continue returns a channel that will receive state updates
+	stateChan := c.client.Continue()
+	
+	// Wait for the state update from the channel
+	state := <-stateChan
+	if state.Err != nil {
+		return fmt.Errorf("continue command failed: %v", state.Err)
+	}
+	
+	// Log information about the program state
+	if state.Exited {
+		log.Println("DEBUG: Program has exited")
+	} else if state.NextInProgress {
+		log.Println("DEBUG: Step in progress")
+	} else if state.Running {
+		log.Println("DEBUG: Program is running")
+		
+		// If program is still running, we need to wait for it to stop at a breakpoint
+		// or reach some other stopping condition
+		stoppedState, err := waitForStop(c, 5*time.Second)
+		if err != nil {
+			log.Printf("DEBUG: Warning: %v", err)
+		} else if stoppedState != nil {
+			log.Printf("DEBUG: Program stopped at %s:%d", 
+				stoppedState.CurrentThread.File, stoppedState.CurrentThread.Line)
+		}
+	} else {
+		log.Printf("DEBUG: Program stopped at %s:%d", state.CurrentThread.File, state.CurrentThread.Line)
+	}
+	
+	return nil
+}
+
+// waitForStop polls the debugger until it reaches a stopped state or times out
+func waitForStop(c *Client, timeout time.Duration) (*api.DebuggerState, error) {
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		state, err := c.client.GetState()
+		if err != nil {
+			return nil, fmt.Errorf("failed to get debugger state: %v", err)
+		}
+		
+		// Check if the program has stopped
+		if !state.Running {
+			return state, nil
+		}
+		
+		// Wait a bit before checking again
+		time.Sleep(100 * time.Millisecond)
+	}
+	
+	return nil, fmt.Errorf("timeout waiting for program to stop")
+}
+
+// Step executes a single instruction, stepping into function calls
+func (c *Client) Step() error {
+	if c.client == nil {
+		return fmt.Errorf("no active debug session")
+	}
+
+	// Check if program is running or not stopped
+	state, err := c.client.GetState()
+	if err != nil {
+		return fmt.Errorf("failed to get state: %v", err)
+	}
+	
+	if state.Running {
+		log.Println("DEBUG: Warning: Cannot step when program is running, waiting for program to stop")
+		stoppedState, err := waitForStop(c, 2*time.Second)
+		if err != nil {
+			return fmt.Errorf("failed to wait for program to stop: %v", err)
+		}
+		state = stoppedState
+	}
+
+	log.Println("DEBUG: Stepping into")
+	nextState, err := c.client.Step()
+	if err != nil {
+		return fmt.Errorf("step into command failed: %v", err)
+	}
+	
+	// If state indicates step is in progress, wait for it to complete
+	if nextState.NextInProgress {
+		log.Println("DEBUG: Step in progress, waiting for completion")
+		completedState, err := waitForStop(c, 2*time.Second)
+		if err != nil {
+			log.Printf("DEBUG: Warning: %v", err)
+		} else if completedState != nil {
+			log.Printf("DEBUG: Step completed, program stopped at %s:%d", 
+				completedState.CurrentThread.File, completedState.CurrentThread.Line)
+		}
+	} else if nextState.Running {
+		log.Println("DEBUG: Program still running after step, waiting for it to stop")
+		completedState, err := waitForStop(c, 2*time.Second)
+		if err != nil {
+			log.Printf("DEBUG: Warning: %v", err)
+		} else if completedState != nil {
+			log.Printf("DEBUG: Program stopped at %s:%d", 
+				completedState.CurrentThread.File, completedState.CurrentThread.Line)
+		}
+	} else if nextState.Exited {
+		log.Println("DEBUG: Program has exited during step")
+	} else {
+		log.Printf("DEBUG: Program stopped at %s:%d", 
+			nextState.CurrentThread.File, nextState.CurrentThread.Line)
+	}
+	
+	return nil
+}
+
+// StepOver executes the next instruction, stepping over function calls
+func (c *Client) StepOver() error {
+	if c.client == nil {
+		return fmt.Errorf("no active debug session")
+	}
+
+	// Check if program is running or not stopped
+	state, err := c.client.GetState()
+	if err != nil {
+		return fmt.Errorf("failed to get state: %v", err)
+	}
+	
+	if state.Running {
+		log.Println("DEBUG: Warning: Cannot step when program is running, waiting for program to stop")
+		stoppedState, err := waitForStop(c, 2*time.Second)
+		if err != nil {
+			return fmt.Errorf("failed to wait for program to stop: %v", err)
+		}
+		state = stoppedState
+	}
+
+	log.Println("DEBUG: Stepping over next line")
+	nextState, err := c.client.Next()
+	if err != nil {
+		return fmt.Errorf("step over command failed: %v", err)
+	}
+	
+	// If state indicates step is in progress, wait for it to complete
+	if nextState.NextInProgress {
+		log.Println("DEBUG: Step in progress, waiting for completion")
+		completedState, err := waitForStop(c, 2*time.Second)
+		if err != nil {
+			log.Printf("DEBUG: Warning: %v", err)
+		} else if completedState != nil {
+			log.Printf("DEBUG: Step completed, program stopped at %s:%d", 
+				completedState.CurrentThread.File, completedState.CurrentThread.Line)
+		}
+	} else if nextState.Running {
+		log.Println("DEBUG: Program still running after step, waiting for it to stop")
+		completedState, err := waitForStop(c, 2*time.Second)
+		if err != nil {
+			log.Printf("DEBUG: Warning: %v", err)
+		} else if completedState != nil {
+			log.Printf("DEBUG: Program stopped at %s:%d", 
+				completedState.CurrentThread.File, completedState.CurrentThread.Line)
+		}
+	} else if nextState.Exited {
+		log.Println("DEBUG: Program has exited during step")
+	} else {
+		log.Printf("DEBUG: Program stopped at %s:%d", 
+			nextState.CurrentThread.File, nextState.CurrentThread.Line)
+	}
+	
+	return nil
+}
+
+// StepOut executes until the current function returns
+func (c *Client) StepOut() error {
+	if c.client == nil {
+		return fmt.Errorf("no active debug session")
+	}
+
+	// Check if program is running or not stopped
+	state, err := c.client.GetState()
+	if err != nil {
+		return fmt.Errorf("failed to get state: %v", err)
+	}
+	
+	if state.Running {
+		log.Println("DEBUG: Warning: Cannot step out when program is running, waiting for program to stop")
+		stoppedState, err := waitForStop(c, 2*time.Second)
+		if err != nil {
+			return fmt.Errorf("failed to wait for program to stop: %v", err)
+		}
+		state = stoppedState
+	}
+
+	log.Println("DEBUG: Stepping out")
+	nextState, err := c.client.StepOut()
+	if err != nil {
+		return fmt.Errorf("step out command failed: %v", err)
+	}
+	
+	// If state indicates step is in progress, wait for it to complete
+	if nextState.NextInProgress {
+		log.Println("DEBUG: Step out in progress, waiting for completion")
+		completedState, err := waitForStop(c, 2*time.Second)
+		if err != nil {
+			log.Printf("DEBUG: Warning: %v", err)
+		} else if completedState != nil {
+			log.Printf("DEBUG: Step out completed, program stopped at %s:%d", 
+				completedState.CurrentThread.File, completedState.CurrentThread.Line)
+		}
+	} else if nextState.Running {
+		log.Println("DEBUG: Program still running after step out, waiting for it to stop")
+		completedState, err := waitForStop(c, 2*time.Second)
+		if err != nil {
+			log.Printf("DEBUG: Warning: %v", err)
+		} else if completedState != nil {
+			log.Printf("DEBUG: Program stopped at %s:%d", 
+				completedState.CurrentThread.File, completedState.CurrentThread.Line)
+		}
+	} else if nextState.Exited {
+		log.Println("DEBUG: Program has exited during step out")
+	} else {
+		log.Printf("DEBUG: Program stopped at %s:%d", 
+			nextState.CurrentThread.File, nextState.CurrentThread.Line)
+	}
+	
+	return nil
+}
+
+// VariableInfo represents information about a variable
+type VariableInfo struct {
+	Name     string                 `json:"name"`
+	Type     string                 `json:"type"`
+	Value    string                 `json:"value"`
+	Children []VariableInfo         `json:"children,omitempty"`
+	Address  uint64                 `json:"address,omitempty"`
+	Kind     string                 `json:"kind,omitempty"`
+	Length   int64                  `json:"length,omitempty"`
+}
+
+// ExamineVariable evaluates and returns information about a variable
+func (c *Client) ExamineVariable(name string, depth int) (*VariableInfo, error) {
+	if c.client == nil {
+		return nil, fmt.Errorf("no active debug session")
+	}
+
+	log.Printf("DEBUG: Examining variable '%s' with depth %d", name, depth)
+	
+	// GetState to get current goroutine and ensure we're stopped
+	state, err := c.client.GetState()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get state: %v", err)
+	}
+	
+	// Check if program is still running - can't examine variables while running
+	if state.Running {
+		log.Printf("DEBUG: Warning: Cannot examine variables while program is running, waiting for program to stop")
+		stoppedState, err := waitForStop(c, 2*time.Second)
+		if err != nil {
+			return nil, fmt.Errorf("failed to wait for program to stop: %v", err)
+		}
+		state = stoppedState
+	}
+	
+	// Ensure we have a valid current thread
+	if state.CurrentThread == nil {
+		return nil, fmt.Errorf("no current thread available for evaluating variables")
+	}
+	
+	// Use the current goroutine
+	goroutineID := state.CurrentThread.GoroutineID
+	
+	// Log current position to help with debugging
+	log.Printf("DEBUG: Current position for variable evaluation: %s:%d", 
+		state.CurrentThread.File, state.CurrentThread.Line)
+	
+	// Evaluate the variable
+	variable, err := c.client.EvalVariable(api.EvalScope{GoroutineID: goroutineID, Frame: 0}, name, api.LoadConfig{
+		FollowPointers:     true,
+		MaxVariableRecurse: depth,
+		MaxStringLen:       100,
+		MaxArrayValues:     100,
+		MaxStructFields:    -1,
+	})
+	
+	if err != nil {
+		return nil, fmt.Errorf("failed to examine variable: %v", err)
+	}
+	
+	// Convert api.Variable to our VariableInfo structure
+	varInfo := convertVariableToInfo(variable, depth)
+	return varInfo, nil
+}
+
+// convertVariableToInfo converts a Delve API variable to our VariableInfo structure
+func convertVariableToInfo(v *api.Variable, depth int) *VariableInfo {
+	if v == nil {
+		return nil
+	}
+	
+	info := &VariableInfo{
+		Name:    v.Name,
+		Type:    v.Type,
+		Value:   v.Value,
+		Address: v.Addr,
+		Kind:    string(v.Kind),
+		Length:  v.Len,
+	}
+	
+	// If we have children and depth allows, process them
+	if depth > 0 && len(v.Children) > 0 {
+		info.Children = make([]VariableInfo, 0, len(v.Children))
+		for _, child := range v.Children {
+			childInfo := convertVariableToInfo(&child, depth-1)
+			if childInfo != nil {
+				info.Children = append(info.Children, *childInfo)
+			}
+		}
+	}
+	
+	return info
 } 

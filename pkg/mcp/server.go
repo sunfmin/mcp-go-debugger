@@ -101,6 +101,11 @@ func (s *MCPDebugServer) registerTools() {
 	s.addListBreakpointsTool()
 	s.addRemoveBreakpointTool()
 	s.addDebugSourceFileTool()
+	s.addContinueTool()
+	s.addStepTool()
+	s.addStepOverTool()
+	s.addStepOutTool()
+	s.addExamineVariableTool()
 }
 
 // addPingTool adds a simple ping tool for health checks
@@ -212,6 +217,58 @@ func (s *MCPDebugServer) addDebugSourceFileTool() {
 	)
 	
 	s.server.AddTool(debugTool, s.DebugSourceFile)
+}
+
+// addContinueTool adds the continue_execution tool
+func (s *MCPDebugServer) addContinueTool() {
+	continueTool := mcp.NewTool("continue",
+		mcp.WithDescription("Continue execution until next breakpoint or program end"),
+	)
+	
+	s.server.AddTool(continueTool, s.Continue)
+}
+
+// addStepTool adds the step tool (step into)
+func (s *MCPDebugServer) addStepTool() {
+	stepTool := mcp.NewTool("step",
+		mcp.WithDescription("Step into the next function call"),
+	)
+	
+	s.server.AddTool(stepTool, s.Step)
+}
+
+// addStepOverTool adds the step_over tool
+func (s *MCPDebugServer) addStepOverTool() {
+	stepOverTool := mcp.NewTool("step_over",
+		mcp.WithDescription("Step over the next function call"),
+	)
+	
+	s.server.AddTool(stepOverTool, s.StepOver)
+}
+
+// addStepOutTool adds the step_out tool
+func (s *MCPDebugServer) addStepOutTool() {
+	stepOutTool := mcp.NewTool("step_out",
+		mcp.WithDescription("Step out of the current function"),
+	)
+	
+	s.server.AddTool(stepOutTool, s.StepOut)
+}
+
+// addExamineVariableTool adds the examine_variable tool
+func (s *MCPDebugServer) addExamineVariableTool() {
+	examineVarTool := mcp.NewTool("examine_variable",
+		mcp.WithDescription("Examine the value of a variable"),
+		mcp.WithString("name",
+			mcp.Required(),
+			mcp.Description("Name of the variable to examine"),
+		),
+		mcp.WithNumber("depth",
+			mcp.Description("Depth for examining nested structures (default: 1)"),
+		),
+	)
+	
+	s.server.AddTool(examineVarTool, s.ExamineVariable)
 }
 
 // Ping handles the ping command
@@ -456,4 +513,106 @@ func (s *MCPDebugServer) DebugSourceFile(ctx context.Context, request mcp.CallTo
 	}
 	
 	return mcp.NewToolResultText(fmt.Sprintf("Successfully launched debugger for source file %s", file)), nil
+}
+
+// Continue handles the continue_execution command
+func (s *MCPDebugServer) Continue(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	log.Println("Received continue request")
+	
+	if !s.debugClient.IsConnected() {
+		return nil, fmt.Errorf("no active debug session, please launch or attach first")
+	}
+	
+	err := s.debugClient.Continue()
+	if err != nil {
+		log.Printf("Error during continue execution: %v", err)
+		return nil, fmt.Errorf("failed to continue execution: %v", err)
+	}
+	
+	return mcp.NewToolResultText("Execution continued"), nil
+}
+
+// Step handles the step_instruction command (step into)
+func (s *MCPDebugServer) Step(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	log.Println("Received step request")
+	
+	if !s.debugClient.IsConnected() {
+		return nil, fmt.Errorf("no active debug session, please launch or attach first")
+	}
+	
+	err := s.debugClient.Step()
+	if err != nil {
+		log.Printf("Error during step: %v", err)
+		return nil, fmt.Errorf("failed to step: %v", err)
+	}
+	
+	return mcp.NewToolResultText("Stepped into next instruction"), nil
+}
+
+// StepOver handles the step_over command
+func (s *MCPDebugServer) StepOver(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	log.Println("Received step over request")
+	
+	if !s.debugClient.IsConnected() {
+		return nil, fmt.Errorf("no active debug session, please launch or attach first")
+	}
+	
+	err := s.debugClient.StepOver()
+	if err != nil {
+		log.Printf("Error during step over: %v", err)
+		return nil, fmt.Errorf("failed to step over: %v", err)
+	}
+	
+	return mcp.NewToolResultText("Stepped over next instruction"), nil
+}
+
+// StepOut handles the step_out command
+func (s *MCPDebugServer) StepOut(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	log.Println("Received step out request")
+	
+	if !s.debugClient.IsConnected() {
+		return nil, fmt.Errorf("no active debug session, please launch or attach first")
+	}
+	
+	err := s.debugClient.StepOut()
+	if err != nil {
+		log.Printf("Error during step out: %v", err)
+		return nil, fmt.Errorf("failed to step out: %v", err)
+	}
+	
+	return mcp.NewToolResultText("Stepped out of current function"), nil
+}
+
+// ExamineVariable handles the examine_variable command
+func (s *MCPDebugServer) ExamineVariable(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	log.Println("Received examine variable request")
+	
+	if !s.debugClient.IsConnected() {
+		return nil, fmt.Errorf("no active debug session, please launch or attach first")
+	}
+	
+	varName, ok := request.Params.Arguments["name"].(string)
+	if !ok || varName == "" {
+		return nil, fmt.Errorf("variable name is required")
+	}
+	
+	// Optionally handle depth parameter
+	var depth int = 1 // Default depth
+	if depthVal, ok := request.Params.Arguments["depth"].(float64); ok {
+		depth = int(depthVal)
+	}
+	
+	varInfo, err := s.debugClient.ExamineVariable(varName, depth)
+	if err != nil {
+		log.Printf("Error examining variable %s: %v", varName, err)
+		return nil, fmt.Errorf("failed to examine variable %s: %v", varName, err)
+	}
+	
+	// Convert variable info to JSON
+	jsonBytes, err := json.Marshal(varInfo)
+	if err != nil {
+		return nil, fmt.Errorf("failed to serialize variable info: %v", err)
+	}
+	
+	return mcp.NewToolResultText(string(jsonBytes)), nil
 } 
