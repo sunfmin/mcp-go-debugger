@@ -24,6 +24,7 @@ MCP Go Debugger is a Machine Code Processor (MCP) that integrates the Delve debu
 
 - Launch Go programs directly from the MCP with debug capabilities enabled
 - Attach to running Go processes that support debugging
+- Debug a Go source file directly (similar to `dlv debug`) by compiling and debugging it
 - Manage the entire debugging lifecycle within a single MCP process
 - Display connection status and information
 
@@ -118,6 +119,15 @@ AI: "Let me examine what's happening when the request is processed."
 "I can see the issue. The 'amount' variable is negative (-10.5) when it reaches line 42, but the validation check occurs later on line 65."
 ```
 
+#### Example 4: Debugging a Source File Directly
+
+```
+User: "Can you debug this main.go file for me?"
+AI: "I'll debug your source file directly."
+[AI uses MCP Go Debugger to compile and debug the file]
+"I've compiled and started debugging main.go. Let me set a breakpoint in the main function to examine how the program executes."
+```
+
 ## Implementation Plan
 
 ### Phase 1: Core Functionality
@@ -208,7 +218,13 @@ User: "Attach to my running Go server with PID 12345"
 AI: [Uses MCP to attach to the running process for debugging]
 ```
 
-3. Ask the AI assistant to debug specific issues using the go-debugger MCP
+3. Debug a Go source file directly:
+```
+User: "Debug this main.go file"
+AI: [Uses MCP to compile and debug the source file directly]
+```
+
+4. Ask the AI assistant to debug specific issues using the go-debugger MCP
 
 ### Implementation Example
 
@@ -317,6 +333,7 @@ func main() {
 Exposed MCP commands:
 - `launch`: Launch a Go program with debugging enabled
 - `attach`: Attach to a running Go process
+- `debug`: Compile and debug a Go source file directly
 - `set_breakpoint`: Set a breakpoint at a specific location
 - `list_breakpoints`: List all active breakpoints
 - `remove_breakpoint`: Remove a specific breakpoint
