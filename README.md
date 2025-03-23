@@ -13,34 +13,31 @@ MCP Go Debugger is a Machine Code Processor (MCP) that integrates the Delve debu
 
 ## Installation
 
-### From Source
+You can install the MCP Go Debugger directly from GitHub:
 
 ```bash
-# Clone the repository
-git clone https://github.com/sunfmin/mcp-go-debugger.git
-cd mcp-go-debugger
-
-# Build and install
-make install
+go install github.com/sunfmin/mcp-go-debugger/cmd/mcp-go-debugger@latest
 ```
 
-### Using Go
+Or clone the repository and build it locally:
 
 ```bash
-go install github.com/sunfmin/mcp-go-debugger/cmd/go-debugger-mcp@latest
+git clone https://github.com/sunfmin/mcp-go-debugger.git
+cd mcp-go-debugger
+make install
 ```
 
 ## Configuration
 
 ### Cursor
 
-Add to Cursor (`~/.cursor/mcp.json`):
+Add the following to your Cursor configuration (`~/.cursor/mcp.json`):
 
 ```json
 {
   "mcpServers": {
     "go-debugger": {
-      "command": "go-debugger-mcp",
+      "command": "mcp-go-debugger",
       "args": []
     }
   }
@@ -49,10 +46,10 @@ Add to Cursor (`~/.cursor/mcp.json`):
 
 ### Claude Desktop
 
-Add to Claude Desktop:
+Add the MCP to Claude Desktop:
 
-```
-claude mcp add go-debugger go-debugger-mcp
+```bash
+claude mcp add go-debugger mcp-go-debugger
 ```
 
 ## Usage

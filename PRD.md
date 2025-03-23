@@ -173,7 +173,7 @@ AI: "Let me examine what's happening when the request is processed."
 {
   "mcpServers": {
     "go-debugger": {
-      "command": "go-debugger-mcp",
+      "command": "mcp-go-debugger",
       "args": []
     }
   }
@@ -186,7 +186,7 @@ AI: "Let me examine what's happening when the request is processed."
 
 1. Add to Claude Desktop:
 ```
-claude mcp add go-debugger go-debugger-mcp
+claude mcp add go-debugger mcp-go-debugger
 ```
 
 2. Verify connection:

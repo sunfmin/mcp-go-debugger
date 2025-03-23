@@ -110,4 +110,14 @@ func (c *Client) Close() error {
 // IsConnected checks if the debug client is currently connected
 func (c *Client) IsConnected() bool {
 	return c.client != nil
+}
+
+// GetTarget returns the target program path or empty string if not connected
+func (c *Client) GetTarget() string {
+	return c.target
+}
+
+// GetPID returns the process ID of the attached process or 0 if not attached
+func (c *Client) GetPID() int {
+	return c.pid
 } 

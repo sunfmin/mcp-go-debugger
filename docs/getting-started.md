@@ -9,48 +9,49 @@ This guide will help you get started with the MCP Go Debugger, a tool that enabl
 - Go 1.20 or higher
 - Delve debugger
 
-### Installing from Source
+### Using Go
 
-1. Clone the repository:
+The easiest way to install the MCP Go Debugger is with Go:
+
+```bash
+go install github.com/sunfmin/mcp-go-debugger/cmd/mcp-go-debugger@latest
+```
+
+This will download, compile, and install the binary to your `$GOPATH/bin` directory.
+
+### From Source
+
+Alternatively, you can build from source:
+
 ```bash
 git clone https://github.com/sunfmin/mcp-go-debugger.git
 cd mcp-go-debugger
-```
-
-2. Build and install:
-```bash
 make install
-```
-
-### Installing with Go
-
-```bash
-go install github.com/sunfmin/mcp-go-debugger/cmd/go-debugger-mcp@latest
 ```
 
 ## Configuration
 
 ### Cursor
 
-1. Add to Cursor configuration file (`~/.cursor/mcp.json`):
+Add the following to your Cursor configuration (`~/.cursor/mcp.json`):
+
 ```json
 {
   "mcpServers": {
     "go-debugger": {
-      "command": "go-debugger-mcp",
+      "command": "mcp-go-debugger",
       "args": []
     }
   }
 }
 ```
 
-2. Restart Cursor to load the new MCP.
-
 ### Claude Desktop
 
-1. Add the MCP to Claude Desktop:
-```
-claude mcp add go-debugger go-debugger-mcp
+Add the MCP to Claude Desktop:
+
+```bash
+claude mcp add go-debugger mcp-go-debugger
 ```
 
 2. Verify the connection:
@@ -111,9 +112,11 @@ For more advanced usage, please refer to the [Advanced Usage Guide](advanced-usa
 
 ## Troubleshooting
 
-If you encounter issues:
+If you're encountering issues:
 
-1. Check that Delve is properly installed
-2. Verify that your Go program is built with debug information
-3. Check the logs at `go-debugger-mcp.log`
-4. Make sure the MCP is properly configured in your AI assistant 
+1. Make sure the debugger binary is in your PATH
+2. Try running the binary directly from the command line to check for errors
+3. Check the logs at `mcp-go-debugger.log`
+4. Check that Delve is properly installed
+5. Verify that your Go program is built with debug information
+6. Make sure the MCP is properly configured in your AI assistant 

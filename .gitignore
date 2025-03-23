@@ -1,0 +1,3 @@
+bin/
+*.log
+testdata/sample/sample
