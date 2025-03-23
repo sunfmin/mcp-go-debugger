@@ -424,6 +424,9 @@ func (s *MCPDebugServer) Close(ctx context.Context, request mcp.CallToolRequest)
 		return newErrorResult("failed to close debug session: %v", err), nil
 	}
 	
+	// Reinitialize the debug client to ensure it's ready for the next session
+	s.debugClient = debugger.NewClient()
+	
 	return mcp.NewToolResultText("Debug session closed successfully"), nil
 }
 

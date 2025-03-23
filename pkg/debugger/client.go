@@ -1075,13 +1075,21 @@ func (c *Client) GetCapturedOutput() *OutputMessage {
 func (c *Client) GetAllCapturedOutput() []OutputMessage {
 	var messages []OutputMessage
 	
-	// Collect all available messages without blocking
-	for {
+	// Non-blocking read of up to 100 messages
+	// This prevents clearing the entire channel while still returning available messages
+	for i := 0; i < 100; i++ {
 		select {
-		case msg := <-c.outputChan:
+		case msg, ok := <-c.outputChan:
+			if !ok {
+				// Channel was closed
+				return messages
+			}
 			messages = append(messages, msg)
 		default:
+			// No more messages available without blocking
 			return messages
 		}
 	}
+	
+	return messages
 }
