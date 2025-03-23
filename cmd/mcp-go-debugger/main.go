@@ -47,6 +47,20 @@ type BreakpointResponse struct {
 	Message string `json:"message"`
 }
 
+// BreakpointsListResponse represents the list_breakpoints output
+type BreakpointsListResponse struct {
+	Breakpoints []BreakpointInfo `json:"breakpoints"`
+	Count       int              `json:"count"`
+}
+
+// BreakpointInfo contains information about a single breakpoint
+type BreakpointInfo struct {
+	ID      int    `json:"id"`
+	File    string `json:"file"`
+	Line    int    `json:"line"`
+	Active  bool   `json:"active"`
+}
+
 func main() {
 	// Configure logging
 	logFile, err := os.OpenFile("mcp-go-debugger.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
@@ -284,5 +298,76 @@ func registerDebugTools(s *server.MCPServer) {
 		}
 		
 		return mcp.NewToolResultText(string(jsonBytes)), nil
+	})
+	
+	// List breakpoints tool - lists all breakpoints
+	listBreakpointsTool := mcp.NewTool("list_breakpoints",
+		mcp.WithDescription("List all currently set breakpoints"),
+	)
+	
+	s.AddTool(listBreakpointsTool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		log.Println("Received list_breakpoints request")
+		
+		if !debugClient.IsConnected() {
+			return nil, fmt.Errorf("no active debug session, please launch or attach first")
+		}
+		
+		breakpoints, err := debugClient.ListBreakpoints()
+		if err != nil {
+			log.Printf("Error listing breakpoints: %v", err)
+			return nil, fmt.Errorf("failed to list breakpoints: %v", err)
+		}
+		
+		// Create structured response
+		response := BreakpointsListResponse{
+			Breakpoints: make([]BreakpointInfo, 0, len(breakpoints)),
+			Count:       len(breakpoints),
+		}
+		
+		// Convert Delve breakpoints to our response format
+		for _, bp := range breakpoints {
+			response.Breakpoints = append(response.Breakpoints, BreakpointInfo{
+				ID:      bp.ID,
+				File:    bp.File,
+				Line:    bp.Line,
+				Active:  true, // Assume active if returned by Delve
+			})
+		}
+		
+		// Convert to JSON string
+		jsonBytes, err := json.Marshal(response)
+		if err != nil {
+			return nil, fmt.Errorf("failed to serialize breakpoints list: %v", err)
+		}
+		
+		return mcp.NewToolResultText(string(jsonBytes)), nil
+	})
+	
+	// Remove breakpoint tool - removes a breakpoint by ID
+	removeBreakpointTool := mcp.NewTool("remove_breakpoint",
+		mcp.WithDescription("Remove a breakpoint by its ID"),
+		mcp.WithNumber("id",
+			mcp.Required(),
+			mcp.Description("ID of the breakpoint to remove"),
+		),
+	)
+	
+	s.AddTool(removeBreakpointTool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		log.Println("Received remove_breakpoint request")
+		
+		if !debugClient.IsConnected() {
+			return nil, fmt.Errorf("no active debug session, please launch or attach first")
+		}
+		
+		idFloat := request.Params.Arguments["id"].(float64)
+		id := int(idFloat)
+		
+		err := debugClient.RemoveBreakpoint(id)
+		if err != nil {
+			log.Printf("Error removing breakpoint: %v", err)
+			return nil, fmt.Errorf("failed to remove breakpoint: %v", err)
+		}
+		
+		return mcp.NewToolResultText(fmt.Sprintf("Successfully removed breakpoint with ID %d", id)), nil
 	})
 } 
