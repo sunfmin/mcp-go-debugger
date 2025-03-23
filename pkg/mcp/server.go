@@ -4,12 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
 	"time"
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 	"github.com/sunfmin/mcp-go-debugger/pkg/debugger"
+	"github.com/sunfmin/mcp-go-debugger/pkg/logger"
 )
 
 // StatusResponse represents the status output
@@ -211,7 +211,7 @@ func (s *MCPDebugServer) addDebugSourceFileTool() {
 		mcp.WithDescription("Debug a Go source file directly"),
 		mcp.WithString("file",
 			mcp.Required(),
-			mcp.Description("Path to the Go source file"),
+			mcp.Description("Absolute Path to the Go source file"),
 		),
 		mcp.WithArray("args",
 			mcp.Description("Arguments to pass to the program"),
@@ -296,13 +296,13 @@ func (s *MCPDebugServer) addGetExecutionPositionTool() {
 
 // Ping handles the ping command
 func (s *MCPDebugServer) Ping(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	log.Println("Received ping request")
+	logger.Debug("Received ping request")
 	return mcp.NewToolResultText("pong - MCP Go Debugger is connected!"), nil
 }
 
 // Status handles the status command
 func (s *MCPDebugServer) Status(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	log.Println("Received status request")
+	logger.Debug("Received status request")
 	
 	// Create a structured response
 	status := StatusResponse{
@@ -333,7 +333,7 @@ func (s *MCPDebugServer) Status(ctx context.Context, request mcp.CallToolRequest
 
 // Launch handles the launch command
 func (s *MCPDebugServer) Launch(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	log.Println("Received launch request")
+	logger.Debug("Received launch request")
 	
 	program := request.Params.Arguments["program"].(string)
 	
@@ -350,7 +350,7 @@ func (s *MCPDebugServer) Launch(ctx context.Context, request mcp.CallToolRequest
 	if s.debugClient.IsConnected() {
 		err := s.debugClient.Close()
 		if err != nil {
-			log.Printf("Error closing existing debug session: %v", err)
+			logger.Error("Failed to close existing debug session", "error", err)
 			return nil, fmt.Errorf("failed to close existing debug session: %v", err)
 		}
 	}
@@ -358,7 +358,7 @@ func (s *MCPDebugServer) Launch(ctx context.Context, request mcp.CallToolRequest
 	// Launch the program
 	err := s.debugClient.LaunchProgram(program, args)
 	if err != nil {
-		log.Printf("Error launching program: %v", err)
+		logger.Error("Failed to launch program", "error", err, "program", program)
 		return nil, fmt.Errorf("failed to launch program: %v", err)
 	}
 	
@@ -367,7 +367,7 @@ func (s *MCPDebugServer) Launch(ctx context.Context, request mcp.CallToolRequest
 
 // Attach handles the attach command
 func (s *MCPDebugServer) Attach(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	log.Println("Received attach request")
+	logger.Debug("Received attach request")
 	
 	pidFloat := request.Params.Arguments["pid"].(float64)
 	pid := int(pidFloat)
@@ -376,7 +376,7 @@ func (s *MCPDebugServer) Attach(ctx context.Context, request mcp.CallToolRequest
 	if s.debugClient.IsConnected() {
 		err := s.debugClient.Close()
 		if err != nil {
-			log.Printf("Error closing existing debug session: %v", err)
+			logger.Error("Failed to close existing debug session", "error", err)
 			return nil, fmt.Errorf("failed to close existing debug session: %v", err)
 		}
 	}
@@ -384,7 +384,7 @@ func (s *MCPDebugServer) Attach(ctx context.Context, request mcp.CallToolRequest
 	// Attach to the process
 	err := s.debugClient.AttachToProcess(pid)
 	if err != nil {
-		log.Printf("Error attaching to process: %v", err)
+		logger.Error("Failed to attach to process", "error", err, "pid", pid)
 		return nil, fmt.Errorf("failed to attach to process: %v", err)
 	}
 	
@@ -393,7 +393,7 @@ func (s *MCPDebugServer) Attach(ctx context.Context, request mcp.CallToolRequest
 
 // Close handles the close command
 func (s *MCPDebugServer) Close(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	log.Println("Received close request")
+	logger.Debug("Received close request")
 	
 	if !s.debugClient.IsConnected() {
 		return mcp.NewToolResultText("No active debug session to close"), nil
@@ -401,7 +401,7 @@ func (s *MCPDebugServer) Close(ctx context.Context, request mcp.CallToolRequest)
 	
 	err := s.debugClient.Close()
 	if err != nil {
-		log.Printf("Error closing debug session: %v", err)
+		logger.Error("Failed to close debug session", "error", err)
 		return nil, fmt.Errorf("failed to close debug session: %v", err)
 	}
 	
@@ -410,7 +410,7 @@ func (s *MCPDebugServer) Close(ctx context.Context, request mcp.CallToolRequest)
 
 // SetBreakpoint handles the set_breakpoint command
 func (s *MCPDebugServer) SetBreakpoint(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	log.Println("Received set_breakpoint request")
+	logger.Debug("Received set_breakpoint request")
 	
 	if !s.debugClient.IsConnected() {
 		return nil, fmt.Errorf("no active debug session, please launch or attach first")
@@ -422,11 +422,11 @@ func (s *MCPDebugServer) SetBreakpoint(ctx context.Context, request mcp.CallTool
 	
 	bp, err := s.debugClient.SetBreakpoint(file, line)
 	if err != nil {
-		log.Printf("Error setting breakpoint: %v", err)
+		logger.Error("Failed to set breakpoint", "error", err, "file", file, "line", line)
 		return nil, fmt.Errorf("failed to set breakpoint: %v", err)
 	}
 	
-	log.Printf("Breakpoint set successfully at %s:%d (ID: %d)", file, line, bp.ID)
+	logger.Info("Breakpoint set successfully", "id", bp.ID, "file", file, "line", line)
 	
 	// Create a structured response
 	result := BreakpointResponse{
@@ -447,7 +447,7 @@ func (s *MCPDebugServer) SetBreakpoint(ctx context.Context, request mcp.CallTool
 
 // ListBreakpoints handles the list_breakpoints command
 func (s *MCPDebugServer) ListBreakpoints(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	log.Println("Received list_breakpoints request")
+	logger.Debug("Received list_breakpoints request")
 	
 	if !s.debugClient.IsConnected() {
 		return nil, fmt.Errorf("no active debug session, please launch or attach first")
@@ -455,7 +455,7 @@ func (s *MCPDebugServer) ListBreakpoints(ctx context.Context, request mcp.CallTo
 	
 	breakpoints, err := s.debugClient.ListBreakpoints()
 	if err != nil {
-		log.Printf("Error listing breakpoints: %v", err)
+		logger.Error("Failed to list breakpoints", "error", err)
 		return nil, fmt.Errorf("failed to list breakpoints: %v", err)
 	}
 	
@@ -486,7 +486,7 @@ func (s *MCPDebugServer) ListBreakpoints(ctx context.Context, request mcp.CallTo
 
 // RemoveBreakpoint handles the remove_breakpoint command
 func (s *MCPDebugServer) RemoveBreakpoint(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	log.Println("Received remove_breakpoint request")
+	logger.Debug("Received remove_breakpoint request")
 	
 	if !s.debugClient.IsConnected() {
 		return nil, fmt.Errorf("no active debug session, please launch or attach first")
@@ -497,7 +497,7 @@ func (s *MCPDebugServer) RemoveBreakpoint(ctx context.Context, request mcp.CallT
 	
 	err := s.debugClient.RemoveBreakpoint(id)
 	if err != nil {
-		log.Printf("Error removing breakpoint: %v", err)
+		logger.Error("Failed to remove breakpoint", "error", err, "breakpoint_id", id)
 		return nil, fmt.Errorf("failed to remove breakpoint: %v", err)
 	}
 	
@@ -506,7 +506,7 @@ func (s *MCPDebugServer) RemoveBreakpoint(ctx context.Context, request mcp.CallT
 
 // DebugSourceFile handles the debug command
 func (s *MCPDebugServer) DebugSourceFile(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	log.Println("Received debug source file request")
+	logger.Debug("Received debug source file request")
 	
 	file := request.Params.Arguments["file"].(string)
 	
@@ -523,7 +523,7 @@ func (s *MCPDebugServer) DebugSourceFile(ctx context.Context, request mcp.CallTo
 	if s.debugClient.IsConnected() {
 		err := s.debugClient.Close()
 		if err != nil {
-			log.Printf("Error closing existing debug session: %v", err)
+			logger.Error("Failed to close existing debug session", "error", err)
 			return nil, fmt.Errorf("failed to close existing debug session: %v", err)
 		}
 	}
@@ -531,7 +531,7 @@ func (s *MCPDebugServer) DebugSourceFile(ctx context.Context, request mcp.CallTo
 	// Debug the source file
 	err := s.debugClient.DebugSourceFile(file, args)
 	if err != nil {
-		log.Printf("Error debugging source file: %v", err)
+		logger.Error("Failed to debug source file", "error", err, "file", file)
 		return nil, fmt.Errorf("failed to debug source file: %v", err)
 	}
 	
@@ -540,7 +540,7 @@ func (s *MCPDebugServer) DebugSourceFile(ctx context.Context, request mcp.CallTo
 
 // Continue handles the continue_execution command
 func (s *MCPDebugServer) Continue(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	log.Println("Received continue request")
+	logger.Debug("Received continue request")
 	
 	if !s.debugClient.IsConnected() {
 		return nil, fmt.Errorf("no active debug session, please launch or attach first")
@@ -548,7 +548,7 @@ func (s *MCPDebugServer) Continue(ctx context.Context, request mcp.CallToolReque
 	
 	err := s.debugClient.Continue()
 	if err != nil {
-		log.Printf("Error during continue execution: %v", err)
+		logger.Error("Failed to continue execution", "error", err)
 		return nil, fmt.Errorf("failed to continue execution: %v", err)
 	}
 	
@@ -557,7 +557,7 @@ func (s *MCPDebugServer) Continue(ctx context.Context, request mcp.CallToolReque
 
 // Step handles the step_instruction command (step into)
 func (s *MCPDebugServer) Step(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	log.Println("Received step request")
+	logger.Debug("Received step request")
 	
 	if !s.debugClient.IsConnected() {
 		return nil, fmt.Errorf("no active debug session, please launch or attach first")
@@ -565,7 +565,7 @@ func (s *MCPDebugServer) Step(ctx context.Context, request mcp.CallToolRequest) 
 	
 	err := s.debugClient.Step()
 	if err != nil {
-		log.Printf("Error during step: %v", err)
+		logger.Error("Failed to step", "error", err)
 		return nil, fmt.Errorf("failed to step: %v", err)
 	}
 	
@@ -574,7 +574,7 @@ func (s *MCPDebugServer) Step(ctx context.Context, request mcp.CallToolRequest) 
 
 // StepOver handles the step_over command
 func (s *MCPDebugServer) StepOver(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	log.Println("Received step over request")
+	logger.Debug("Received step over request")
 	
 	if !s.debugClient.IsConnected() {
 		return nil, fmt.Errorf("no active debug session, please launch or attach first")
@@ -582,7 +582,7 @@ func (s *MCPDebugServer) StepOver(ctx context.Context, request mcp.CallToolReque
 	
 	err := s.debugClient.StepOver()
 	if err != nil {
-		log.Printf("Error during step over: %v", err)
+		logger.Error("Failed to step over", "error", err)
 		return nil, fmt.Errorf("failed to step over: %v", err)
 	}
 	
@@ -591,7 +591,7 @@ func (s *MCPDebugServer) StepOver(ctx context.Context, request mcp.CallToolReque
 
 // StepOut handles the step_out command
 func (s *MCPDebugServer) StepOut(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	log.Println("Received step out request")
+	logger.Debug("Received step out request")
 	
 	if !s.debugClient.IsConnected() {
 		return nil, fmt.Errorf("no active debug session, please launch or attach first")
@@ -599,7 +599,7 @@ func (s *MCPDebugServer) StepOut(ctx context.Context, request mcp.CallToolReques
 	
 	err := s.debugClient.StepOut()
 	if err != nil {
-		log.Printf("Error during step out: %v", err)
+		logger.Error("Failed to step out", "error", err)
 		return nil, fmt.Errorf("failed to step out: %v", err)
 	}
 	
@@ -608,7 +608,7 @@ func (s *MCPDebugServer) StepOut(ctx context.Context, request mcp.CallToolReques
 
 // ExamineVariable handles the examine_variable command
 func (s *MCPDebugServer) ExamineVariable(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	log.Println("Received examine variable request")
+	logger.Debug("Received examine variable request")
 	
 	if !s.debugClient.IsConnected() {
 		return nil, fmt.Errorf("no active debug session, please launch or attach first")
@@ -627,7 +627,7 @@ func (s *MCPDebugServer) ExamineVariable(ctx context.Context, request mcp.CallTo
 	
 	varInfo, err := s.debugClient.ExamineVariable(varName, depth)
 	if err != nil {
-		log.Printf("Error examining variable %s: %v", varName, err)
+		logger.Error("Failed to examine variable", "error", err, "variable", varName)
 		return nil, fmt.Errorf("failed to examine variable %s: %v", varName, err)
 	}
 	
@@ -642,6 +642,8 @@ func (s *MCPDebugServer) ExamineVariable(ctx context.Context, request mcp.CallTo
 
 // ListScopeVariables handles the list_scope_variables command
 func (s *MCPDebugServer) ListScopeVariables(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	logger.Debug("Received list_scope_variables request")
+	
 	// Check if we have an active debug session
 	if s.debugClient == nil || !s.debugClient.IsConnected() {
 		return nil, fmt.Errorf("no active debug session, please launch or attach to a program first")
@@ -658,12 +660,14 @@ func (s *MCPDebugServer) ListScopeVariables(ctx context.Context, request mcp.Cal
 	// List all scope variables
 	scopeVars, err := s.debugClient.ListScopeVariables(depth)
 	if err != nil {
+		logger.Error("Failed to list scope variables", "error", err)
 		return nil, fmt.Errorf("failed to list scope variables: %v", err)
 	}
 	
 	// Convert to JSON
 	jsonBytes, err := json.Marshal(scopeVars)
 	if err != nil {
+		logger.Error("Failed to marshal scope variables to JSON", "error", err)
 		return nil, fmt.Errorf("failed to marshal scope variables to JSON: %v", err)
 	}
 	
@@ -672,7 +676,7 @@ func (s *MCPDebugServer) ListScopeVariables(ctx context.Context, request mcp.Cal
 
 // GetExecutionPosition handles the get_execution_position command
 func (s *MCPDebugServer) GetExecutionPosition(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	log.Println("Received get_execution_position request")
+	logger.Debug("Received get_execution_position request")
 	
 	if !s.debugClient.IsConnected() {
 		return nil, fmt.Errorf("no active debug session, please launch or attach first")
@@ -681,7 +685,7 @@ func (s *MCPDebugServer) GetExecutionPosition(ctx context.Context, request mcp.C
 	// Get the current execution position from the debug client
 	position, err := s.debugClient.GetExecutionPosition()
 	if err != nil {
-		log.Printf("Error getting execution position: %v", err)
+		logger.Error("Failed to get execution position", "error", err)
 		return nil, fmt.Errorf("failed to get execution position: %v", err)
 	}
 	

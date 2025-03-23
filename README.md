@@ -1,96 +1,67 @@
 # MCP Go Debugger
 
-MCP Go Debugger is a Machine Code Processor (MCP) that integrates the Delve debugger for Go applications into Cursor or Claude Desktop. It enables AI assistants to debug Go applications at runtime by providing debugger functionality through an MCP server interface.
+A debugger interface for Go programs that integrates with MCP (Mission Control Protocol).
 
 ## Features
 
-- Launch Go programs directly with debug capabilities
-- Attach to running Go processes for debugging
-- Set and manage breakpoints
-- Step through code execution
-- Inspect variables and program state
-- Examine call stacks and goroutines
+- Launch and debug Go applications
+- Attach to existing Go processes
+- Set breakpoints
+- Step through code (step into, step over, step out)
+- Examine variables
+- View stack traces
+- List all variables in current scope
+- Get current execution position
 
 ## Installation
 
-You can install the MCP Go Debugger directly from GitHub:
-
 ```bash
-go install github.com/sunfmin/mcp-go-debugger/cmd/mcp-go-debugger@latest
-```
-
-Or clone the repository and build it locally:
-
-```bash
-git clone https://github.com/sunfmin/mcp-go-debugger.git
-cd mcp-go-debugger
-make install
-```
-
-## Configuration
-
-### Cursor
-
-Add the following to your Cursor configuration (`~/.cursor/mcp.json`):
-
-```json
-{
-  "mcpServers": {
-    "go-debugger": {
-      "command": "mcp-go-debugger",
-      "args": []
-    }
-  }
-}
-```
-
-### Claude Desktop
-
-Add the MCP to Claude Desktop:
-
-```bash
-claude mcp add go-debugger mcp-go-debugger
+go get github.com/sunfmin/mcp-go-debugger
 ```
 
 ## Usage
 
-Run a Go program with debugging enabled:
+This debugger is designed to be integrated with MCP-compatible clients. The tools provided include:
 
-```
-# Ask the AI assistant
-> Please debug my Go application using main.go
+- `ping` - Test connection to the debugger
+- `status` - Check debugger status
+- `launch` - Launch a Go program with debugging
+- `attach` - Attach to a running Go process
+- `debug` - Debug a Go source file directly
+- `set_breakpoint` - Set a breakpoint at a specific file and line
+- `list_breakpoints` - List all current breakpoints
+- `remove_breakpoint` - Remove a breakpoint
+- `continue` - Continue execution
+- `step` - Step into function calls
+- `step_over` - Step over function calls
+- `step_out` - Step out of current function
+- `examine_variable` - Examine a variable's value
+- `list_scope_variables` - List all variables in current scope
+- `get_execution_position` - Get current execution position
+
+## Debug Logging
+
+By default, debug logging is disabled to reduce noise in normal operation. You can enable detailed debug logs by setting the `MCP_DEBUG` environment variable:
+
+```bash
+# Enable debug logging
+export MCP_DEBUG=1
+
+# Run the debugger
+mcp-go-debugger
 ```
 
-Or attach to a running process:
+For Windows:
 
-```
-# Ask the AI assistant
-> Attach to my running Go server with PID 12345 and help me debug it
+```cmd
+set MCP_DEBUG=1
+mcp-go-debugger
 ```
 
 ## Development
 
-### Prerequisites
-
-- Go 1.20 or higher
-- Delve debugger
-
-### Building
-
-```bash
-make build
-```
-
-### Testing
-
-```bash
-make test
-```
+See the [Implementation Guide](./Implementation-Guide.md) for details on contributing to this project.
 
 ## License
 
-MIT
-
-## Documentation
-
-For more detailed information, see the [PRD](PRD.md) and [Phase 1 Tasks](Phase1-Tasks.md). 
+[MIT License](LICENSE) 
