@@ -481,14 +481,17 @@ func (c *Client) Continue() error {
 
 	// Wait for the state update from the channel
 	state := <-stateChan
+	if state.Exited {
+		log.Println("DEBUG: Program has exited")
+		return nil
+	}
+
 	if state.Err != nil {
 		return fmt.Errorf("continue command failed: %v", state.Err)
 	}
 
 	// Log information about the program state
-	if state.Exited {
-		log.Println("DEBUG: Program has exited")
-	} else if state.NextInProgress {
+	if state.NextInProgress {
 		log.Println("DEBUG: Step in progress")
 	} else if state.Running {
 		log.Println("DEBUG: Program is running")
@@ -897,6 +900,78 @@ func (c *Client) ListScopeVariables(depth int) (*ScopeVariables, error) {
 	//		result.Package = append(result.Package, *info)
 	//	}
 	//}
-	
+
+	return result, nil
+}
+
+// ExecutionPosition represents the current execution position in the debugged program
+type ExecutionPosition struct {
+	File         string         `json:"file"`
+	Line         int            `json:"line"`
+	Function     string         `json:"function"`
+	Running      bool           `json:"running"`
+	Exited       bool           `json:"exited"`
+	ReturnValues []VariableInfo `json:"return_values,omitempty"`
+	GoroutineID  int64          `json:"goroutine_id"`
+}
+
+// GetExecutionPosition returns the current execution position in the program
+func (c *Client) GetExecutionPosition() (*ExecutionPosition, error) {
+	if c.client == nil {
+		return nil, fmt.Errorf("no active debug session")
+	}
+
+	log.Printf("DEBUG: Getting current execution position")
+
+	state, err := c.client.GetState()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get state: %v", err)
+	}
+
+	result := &ExecutionPosition{
+		Running: state.Running,
+		Exited:  state.Exited,
+	}
+
+	// If the program is running, we can't get the current line
+	if state.Running {
+		log.Printf("DEBUG: Program is running, can't get current line")
+		return result, nil
+	}
+
+	// If the program has exited, we can't get the current line
+	if state.Exited {
+		log.Printf("DEBUG: Program has exited, can't get current line")
+		return result, nil
+	}
+
+	// If we have a current thread, we can get the current line
+	if state.CurrentThread != nil {
+		result.File = state.CurrentThread.File
+		result.Line = state.CurrentThread.Line
+		result.Function = state.CurrentThread.Function.Name()
+		result.GoroutineID = state.CurrentThread.GoroutineID
+
+		// Add return values if available
+		if len(state.CurrentThread.ReturnValues) > 0 {
+			log.Printf("DEBUG: Found %d return values", len(state.CurrentThread.ReturnValues))
+
+			// Convert to our VariableInfo format
+			returnValues := make([]VariableInfo, 0, len(state.CurrentThread.ReturnValues))
+
+			for _, rv := range state.CurrentThread.ReturnValues {
+				info := convertVariableToInfo(&rv, 1)
+				if info != nil {
+					returnValues = append(returnValues, *info)
+				}
+			}
+
+			result.ReturnValues = returnValues
+		}
+	}
+
+	log.Printf("DEBUG: Current execution position: %s:%d in function %s (goroutine %d)",
+		result.File, result.Line, result.Function, result.GoroutineID)
+
 	return result, nil
 }

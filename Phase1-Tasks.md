@@ -76,6 +76,7 @@ This document outlines the detailed tasks for implementing Phase 1 (Core Functio
 - [x] **7.4** [P1] Add support for scope-aware variable lookup *(depends on: 7.1-7.3)*
 - [x] **7.5** [P2] Implement "evaluate" tool for expression evaluation *(depends on: 7.1-7.4)*
 - [x] **7.6** [P1] Implement "list_scope_variables" tool to display all variables in current scope *(depends on: 7.1-7.4)*
+- [x] **7.7** [P1] Implement "get_execution_position" tool to retrieve the current line number and file *(depends on: 7.1-7.4)*
 
 ### 8. Stack and Goroutine Inspection
 

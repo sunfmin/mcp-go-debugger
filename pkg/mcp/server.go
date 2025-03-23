@@ -107,6 +107,7 @@ func (s *MCPDebugServer) registerTools() {
 	s.addStepOutTool()
 	s.addExamineVariableTool()
 	s.addListScopeVariablesTool()
+	s.addGetExecutionPositionTool()
 }
 
 // addPingTool adds a simple ping tool for health checks
@@ -282,6 +283,15 @@ func (s *MCPDebugServer) addListScopeVariablesTool() {
 	)
 	
 	s.server.AddTool(listScopeVariablesTool, s.ListScopeVariables)
+}
+
+// addGetExecutionPositionTool adds the get_execution_position tool
+func (s *MCPDebugServer) addGetExecutionPositionTool() {
+	positionTool := mcp.NewTool("get_execution_position",
+		mcp.WithDescription("Get the current execution position including file, line number, and function name"),
+	)
+	
+	s.server.AddTool(positionTool, s.GetExecutionPosition)
 }
 
 // Ping handles the ping command
@@ -655,6 +665,30 @@ func (s *MCPDebugServer) ListScopeVariables(ctx context.Context, request mcp.Cal
 	jsonBytes, err := json.Marshal(scopeVars)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal scope variables to JSON: %v", err)
+	}
+	
+	return mcp.NewToolResultText(string(jsonBytes)), nil
+}
+
+// GetExecutionPosition handles the get_execution_position command
+func (s *MCPDebugServer) GetExecutionPosition(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	log.Println("Received get_execution_position request")
+	
+	if !s.debugClient.IsConnected() {
+		return nil, fmt.Errorf("no active debug session, please launch or attach first")
+	}
+	
+	// Get the current execution position from the debug client
+	position, err := s.debugClient.GetExecutionPosition()
+	if err != nil {
+		log.Printf("Error getting execution position: %v", err)
+		return nil, fmt.Errorf("failed to get execution position: %v", err)
+	}
+	
+	// Convert to JSON
+	jsonBytes, err := json.Marshal(position)
+	if err != nil {
+		return nil, fmt.Errorf("failed to serialize execution position: %v", err)
 	}
 	
 	return mcp.NewToolResultText(string(jsonBytes)), nil

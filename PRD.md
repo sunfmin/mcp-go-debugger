@@ -51,6 +51,7 @@ MCP Go Debugger is a Machine Code Processor (MCP) that integrates the Delve debu
 - View thread information
 - Evaluate expressions in current context
 - List all variables in current scope (local variables, function arguments, and package variables)
+- Get current execution position (file name, line number, and function name)
 
 ### 5. Runtime Analysis
 
