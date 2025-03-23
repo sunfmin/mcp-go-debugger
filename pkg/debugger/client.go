@@ -1,8 +1,10 @@
 package debugger
 
 import (
+	"bufio"
 	"context"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"os/exec"
@@ -10,6 +12,7 @@ import (
 	"time"
 
 	"github.com/go-delve/delve/pkg/logflags"
+	"github.com/go-delve/delve/pkg/proc"
 	"github.com/go-delve/delve/service"
 	"github.com/go-delve/delve/service/api"
 	"github.com/go-delve/delve/service/debugger"
@@ -20,16 +23,28 @@ import (
 
 // Client encapsulates the Delve debug client functionality
 type Client struct {
-	client  *rpc2.RPCClient
-	target  string
-	pid     int
-	server  *rpccommon.ServerImpl
-	tempDir string
+	client     *rpc2.RPCClient
+	target     string
+	pid        int
+	server     *rpccommon.ServerImpl
+	tempDir    string
+	outputChan chan OutputMessage // Channel for captured output
+	stopOutput chan struct{}      // Channel to signal stopping output capture
+}
+
+// OutputMessage represents a captured output message
+type OutputMessage struct {
+	Source    string    `json:"source"` // "stdout" or "stderr"
+	Content   string    `json:"content"`
+	Timestamp time.Time `json:"timestamp"`
 }
 
 // NewClient creates a new Delve client wrapper
 func NewClient() *Client {
-	return &Client{}
+	return &Client{
+		outputChan: make(chan OutputMessage, 100), // Buffer for output messages
+		stopOutput: make(chan struct{}),
+	}
 }
 
 // LaunchProgram starts a new program with debugging enabled
@@ -68,6 +83,18 @@ func (c *Client) LaunchProgram(program string, args []string) error {
 		return fmt.Errorf("couldn't start listener: %s", err)
 	}
 
+	// Create pipes for stdout and stderr using the proc.Redirector function
+	stdoutReader, stdoutRedirect, err := proc.Redirector()
+	if err != nil {
+		return fmt.Errorf("failed to create stdout redirector: %v", err)
+	}
+
+	stderrReader, stderrRedirect, err := proc.Redirector()
+	if err != nil {
+		stdoutRedirect.File.Close()
+		return fmt.Errorf("failed to create stderr redirector: %v", err)
+	}
+
 	logger.Printf("DEBUG: Creating Delve config")
 	// Create Delve config
 	config := &service.Config{
@@ -80,8 +107,14 @@ func (c *Client) LaunchProgram(program string, args []string) error {
 			Backend:        "default",
 			CheckGoVersion: true,
 			DisableASLR:    true,
+			Stdout:         stdoutRedirect,
+			Stderr:         stderrRedirect,
 		},
 	}
+
+	// Start goroutines to capture output
+	go c.captureOutput(stdoutReader, "stdout")
+	go c.captureOutput(stderrReader, "stderr")
 
 	logger.Printf("DEBUG: Creating debug server")
 	// Create and start the debugging server
@@ -171,6 +204,10 @@ func (c *Client) AttachToProcess(pid int) error {
 	if err != nil {
 		return fmt.Errorf("couldn't start listener: %s", err)
 	}
+
+	// Note: When attaching to an existing process, we can't easily redirect its stdout/stderr
+	// as those file descriptors are already connected. Output capture is limited for attach mode.
+	logger.Printf("DEBUG: Note: Output redirection is limited when attaching to an existing process")
 
 	logger.Printf("DEBUG: Creating Delve config for attach")
 	// Create Delve config for attaching to process
@@ -310,6 +347,9 @@ func (c *Client) Close() error {
 		return nil
 	}
 
+	// Signal to stop output capturing goroutines
+	close(c.stopOutput)
+
 	// Create a context with timeout to prevent indefinite hanging
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -410,12 +450,38 @@ func (c *Client) DebugSourceFile(sourceFile string, args []string) error {
 
 	logger.Printf("DEBUG: Compiling source file %s to %s", absPath, outputBinary)
 
+	// Create pipes for build output
+	buildStdoutReader, buildStdoutWriter, err := os.Pipe()
+	if err != nil {
+		os.RemoveAll(tempDir)
+		return fmt.Errorf("failed to create stdout pipe: %v", err)
+	}
+	defer buildStdoutReader.Close()
+	defer buildStdoutWriter.Close()
+
 	// Run go build with optimizations disabled
 	buildCmd := exec.Command("go", "build", "-gcflags", "all=-N -l", "-o", outputBinary, absPath)
-	buildOutput, err := buildCmd.CombinedOutput()
+	buildCmd.Stdout = buildStdoutWriter
+	buildCmd.Stderr = buildStdoutWriter
+	
+	err = buildCmd.Start()
 	if err != nil {
-		os.RemoveAll(tempDir) // Clean up temp directory on error
-		return fmt.Errorf("failed to compile source file: %v\nOutput: %s", err, buildOutput)
+		os.RemoveAll(tempDir)
+		return fmt.Errorf("failed to start compilation: %v", err)
+	}
+
+	// Capture build output
+	go func() {
+		scanner := bufio.NewScanner(buildStdoutReader)
+		for scanner.Scan() {
+			logger.Printf("Build output: %s", scanner.Text())
+		}
+	}()
+	
+	err = buildCmd.Wait()
+	if err != nil {
+		os.RemoveAll(tempDir)
+		return fmt.Errorf("failed to compile source file: %v", err)
 	}
 
 	// Launch the compiled binary with the debugger
@@ -974,4 +1040,48 @@ func (c *Client) GetExecutionPosition() (*ExecutionPosition, error) {
 		result.File, result.Line, result.Function, result.GoroutineID)
 
 	return result, nil
+}
+
+// captureOutput reads from a reader and sends the output to the output channel
+func (c *Client) captureOutput(reader io.ReadCloser, source string) {
+	defer reader.Close()
+	
+	scanner := bufio.NewScanner(reader)
+	for scanner.Scan() {
+		select {
+		case <-c.stopOutput:
+			return
+		case c.outputChan <- OutputMessage{
+			Source:    source,
+			Content:   scanner.Text(),
+			Timestamp: time.Now(),
+		}:
+		}
+	}
+}
+
+// GetCapturedOutput returns the next captured output message
+// Returns nil when there are no more messages
+func (c *Client) GetCapturedOutput() *OutputMessage {
+	select {
+	case msg := <-c.outputChan:
+		return &msg
+	default:
+		return nil
+	}
+}
+
+// GetAllCapturedOutput returns all currently available captured output messages
+func (c *Client) GetAllCapturedOutput() []OutputMessage {
+	var messages []OutputMessage
+	
+	// Collect all available messages without blocking
+	for {
+		select {
+		case msg := <-c.outputChan:
+			messages = append(messages, msg)
+		default:
+			return messages
+		}
+	}
 }

@@ -108,6 +108,7 @@ func (s *MCPDebugServer) registerTools() {
 	s.addExamineVariableTool()
 	s.addListScopeVariablesTool()
 	s.addGetExecutionPositionTool()
+	s.addGetDebuggerOutputTool()
 }
 
 // addPingTool adds a simple ping tool for health checks
@@ -292,6 +293,15 @@ func (s *MCPDebugServer) addGetExecutionPositionTool() {
 	)
 	
 	s.server.AddTool(positionTool, s.GetExecutionPosition)
+}
+
+// addGetDebuggerOutputTool registers the get_debugger_output tool
+func (s *MCPDebugServer) addGetDebuggerOutputTool() {
+	outputTool := mcp.NewTool("get_debugger_output",
+		mcp.WithDescription("Get captured stdout and stderr from the debugged program"),
+	)
+
+	s.server.AddTool(outputTool, s.GetDebuggerOutput)
 }
 
 // newErrorResult creates a tool result that represents an error
@@ -705,4 +715,29 @@ func (s *MCPDebugServer) GetExecutionPosition(ctx context.Context, request mcp.C
 	}
 	
 	return mcp.NewToolResultText(string(jsonBytes)), nil
+}
+
+// GetDebuggerOutput retrieves any captured stdout/stderr from the debugged program
+func (s *MCPDebugServer) GetDebuggerOutput(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	if s.debugClient == nil || !s.debugClient.IsConnected() {
+		return newErrorResult("No active debug session"), nil
+	}
+
+	// Get all captured output
+	messages := s.debugClient.GetAllCapturedOutput()
+	
+	// Format the messages into a response
+	var response struct {
+		Messages []debugger.OutputMessage `json:"messages"`
+	}
+	response.Messages = messages
+	
+	// Convert to JSON
+	outputJSON, err := json.Marshal(response)
+	if err != nil {
+		return newErrorResult("Failed to marshal output messages: %v", err), nil
+	}
+	
+	// Return the output
+	return mcp.NewToolResultText(string(outputJSON)), nil
 } 

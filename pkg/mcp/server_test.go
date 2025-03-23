@@ -615,6 +615,14 @@ func TestDebugWorkflow(t *testing.T) {
 	// Allow time for program to complete
 	time.Sleep(300 * time.Millisecond)
 
+	// Check for captured output
+	outputRequest := mcp.CallToolRequest{}
+	outputResult, err := server.GetDebuggerOutput(ctx, outputRequest)
+	if err == nil && outputResult != nil {
+		outputText := getTextContent(outputResult)
+		t.Logf("Captured program output: %s", outputText)
+	}
+
 	// Clean up by closing the debug session
 	closeRequest := mcp.CallToolRequest{}
 	closeResult, err := server.Close(ctx, closeRequest)
