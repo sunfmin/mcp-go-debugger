@@ -6,6 +6,7 @@ import (
 	"log"
 	"net"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"time"
 
@@ -23,6 +24,7 @@ type Client struct {
 	target  string
 	pid     int
 	server  *rpccommon.ServerImpl
+	tempDir string
 }
 
 // NewClient creates a new Delve client wrapper
@@ -74,7 +76,10 @@ func (c *Client) LaunchProgram(program string, args []string) error {
 		AcceptMulti: true,
 		ProcessArgs: append([]string{absPath}, args...),
 		Debugger: debugger.Config{
-			WorkingDir: "",
+			WorkingDir:        "",
+			Backend:           "default",
+			CheckGoVersion:    true,
+			DisableASLR:       true,
 		},
 	}
 
@@ -175,7 +180,10 @@ func (c *Client) AttachToProcess(pid int) error {
 		AcceptMulti: true,
 		ProcessArgs: []string{},
 		Debugger: debugger.Config{
-			AttachPid: pid,
+			AttachPid:      pid,
+			Backend:        "default",
+			CheckGoVersion: true,
+			DisableASLR:    true,
 		},
 	}
 
@@ -358,12 +366,67 @@ func (c *Client) Close() error {
 	c.target = ""
 	c.pid = 0
 
+	// Clean up the temporary directory if it exists
+	if c.tempDir != "" {
+		log.Printf("DEBUG: Cleaning up temporary directory: %s", c.tempDir)
+		os.RemoveAll(c.tempDir)
+		c.tempDir = ""
+	}
+
 	return detachErr
 }
 
 // IsConnected returns whether a debug session is active
 func (c *Client) IsConnected() bool {
 	return c.client != nil
+}
+
+// DebugSourceFile compiles and debugs a Go source file
+func (c *Client) DebugSourceFile(sourceFile string, args []string) error {
+	if c.client != nil {
+		return fmt.Errorf("debug session already active")
+	}
+
+	// Ensure source file exists
+	absPath, err := filepath.Abs(sourceFile)
+	if err != nil {
+		return fmt.Errorf("failed to get absolute path: %v", err)
+	}
+	
+	if _, err := os.Stat(absPath); os.IsNotExist(err) {
+		return fmt.Errorf("source file not found: %s", absPath)
+	}
+
+	// Create a temporary directory for compilation
+	tempDir, err := os.MkdirTemp("", "mcp-go-debugger-*")
+	if err != nil {
+		return fmt.Errorf("failed to create temp directory: %v", err)
+	}
+	c.tempDir = tempDir
+	// We'll clean this up when the debug session ends
+	
+	// Build a temporary binary in the temp directory
+	outputBinary := filepath.Join(tempDir, "debug_binary")
+	
+	log.Printf("DEBUG: Compiling source file %s to %s", absPath, outputBinary)
+	
+	// Run go build with optimizations disabled
+	buildCmd := exec.Command("go", "build", "-gcflags", "all=-N -l", "-o", outputBinary, absPath)
+	buildOutput, err := buildCmd.CombinedOutput()
+	if err != nil {
+		os.RemoveAll(tempDir) // Clean up temp directory on error
+		return fmt.Errorf("failed to compile source file: %v\nOutput: %s", err, buildOutput)
+	}
+	
+	// Launch the compiled binary with the debugger
+	log.Printf("DEBUG: Launching compiled binary with debugger")
+	err = c.LaunchProgram(outputBinary, args)
+	if err != nil {
+		os.RemoveAll(tempDir) // Clean up temp directory on error
+		return fmt.Errorf("failed to launch debugger: %v", err)
+	}
+	
+	return nil
 }
 
 // GetTarget returns the target program being debugged
