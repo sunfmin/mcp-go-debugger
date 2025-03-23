@@ -50,6 +50,7 @@ MCP Go Debugger is a Machine Code Processor (MCP) that integrates the Delve debu
 - Inspect goroutines
 - View thread information
 - Evaluate expressions in current context
+- List all variables in current scope (local variables, function arguments, and package variables)
 
 ### 5. Runtime Analysis
 
@@ -342,6 +343,7 @@ Exposed MCP commands:
 - `step_out`: Step out of current function
 - `step_over`: Step over current line
 - `examine_variable`: Examine value of a variable
+- `list_scope_variables`: List all variables in current scope
 - `list_goroutines`: List all goroutines
 - `stack_trace`: Show stack trace at current position
 - `evaluate`: Evaluate an expression in current context

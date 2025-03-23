@@ -375,7 +375,63 @@ func TestDebugWorkflow(t *testing.T) {
 	// Allow time for the breakpoint to be hit
 	time.Sleep(300 * time.Millisecond)
 
-	// Step 7: Examine variable 'n' at the first breakpoint in calculate()
+	// Step 7: List all variables in the current scope
+	listScopeVarsRequest := mcp.CallToolRequest{}
+	listScopeVarsResult, err := server.ListScopeVariables(ctx, listScopeVarsRequest)
+	if err != nil {
+		t.Fatalf("Failed to list scope variables: %v", err)
+	}
+	
+	listScopeVarsText := getTextContent(listScopeVarsResult)
+	t.Logf("Scope variables: %s", listScopeVarsText)
+	
+	// Parse the scope variables info
+	var scopeVarsInfo map[string]interface{}
+	if err := json.Unmarshal([]byte(listScopeVarsText), &scopeVarsInfo); err != nil {
+		t.Fatalf("Failed to parse scope variables info: %v", err)
+	}
+	
+	// Verify the scope variables contain expected variables
+	localVars, localVarsOk := scopeVarsInfo["local"].([]interface{})
+	if !localVarsOk {
+		t.Fatalf("Failed to extract local variables from scope variables info")
+	}
+	
+	args, argsOk := scopeVarsInfo["args"].([]interface{})
+	if !argsOk {
+		t.Fatalf("Failed to extract args from scope variables info")
+	}
+	
+	// Verify we have the expected function argument
+	foundNArg := false
+	for _, arg := range args {
+		argMap, ok := arg.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		
+		name, nameOk := argMap["name"].(string)
+		if nameOk && name == "n" {
+			value, valueOk := argMap["value"].(string)
+			if valueOk && value == "10" {
+				foundNArg = true
+				break
+			}
+		}
+	}
+	
+	if !foundNArg {
+		t.Errorf("Expected to find function argument 'n' with value '10' in scope variables")
+	}
+	
+	// Check that we have local variables as well (without requiring specific ones)
+	if len(localVars) == 0 {
+		t.Errorf("Expected to find at least some local variables in scope")
+	} else {
+		t.Logf("Found %d local variables", len(localVars))
+	}
+
+	// Step 8: Examine variable 'n' at the first breakpoint in calculate()
 	examineRequest := mcp.CallToolRequest{}
 	examineRequest.Params.Arguments = map[string]interface{}{
 		"name":  "n",
@@ -405,7 +461,7 @@ func TestDebugWorkflow(t *testing.T) {
 		t.Fatalf("Failed to extract value from variable n info")
 	}
 
-	// Step 8: Use step over to go to the next line
+	// Step 9: Use step over to go to the next line
 	stepOverRequest := mcp.CallToolRequest{}
 	stepResult, err := server.StepOver(ctx, stepOverRequest)
 	if err != nil {
@@ -418,7 +474,7 @@ func TestDebugWorkflow(t *testing.T) {
 	// Allow time for the step to complete
 	time.Sleep(200 * time.Millisecond)
 
-	// Step 9: Examine variable 'a' which should be defined now
+	// Step 10: Examine variable 'a' which should be defined now
 	examineRequest2 := mcp.CallToolRequest{}
 	examineRequest2.Params.Arguments = map[string]interface{}{
 		"name":  "a",
@@ -448,7 +504,7 @@ func TestDebugWorkflow(t *testing.T) {
 		t.Fatalf("Failed to extract value from variable a info")
 	}
 
-	// Step 10: Step over again
+	// Step 11: Step over again
 	stepResult2, err := server.StepOver(ctx, stepOverRequest)
 	if err != nil {
 		t.Fatalf("Failed to step over second time: %v", err)
@@ -460,7 +516,7 @@ func TestDebugWorkflow(t *testing.T) {
 	// Allow time for the step to complete
 	time.Sleep(200 * time.Millisecond)
 
-	// Step 11: Remove the first breakpoint
+	// Step 12: Remove the first breakpoint
 	removeBreakpointRequest := mcp.CallToolRequest{}
 	removeBreakpointRequest.Params.Arguments = map[string]interface{}{
 		"id": float64(firstBreakpointID),
@@ -477,7 +533,7 @@ func TestDebugWorkflow(t *testing.T) {
 		t.Errorf("Unexpected remove breakpoint response: %s", removeText)
 	}
 
-	// Step 12: Verify we now have one less breakpoint
+	// Step 13: Verify we now have one less breakpoint
 	listResult3, err := server.ListBreakpoints(ctx, listBreakpointsRequest)
 	if err != nil {
 		t.Fatalf("Failed to list breakpoints after removal: %v", err)
@@ -509,7 +565,7 @@ func TestDebugWorkflow(t *testing.T) {
 		t.Fatalf("Breakpoint with ID %d was supposed to be removed but still exists", firstBreakpointID)
 	}
 
-	// Step 13: Continue execution to complete the program
+	// Step 14: Continue execution to complete the program
 	_, err = server.Continue(ctx, continueRequest)
 	if err != nil {
 		t.Fatalf("Failed to continue execution to completion: %v", err)

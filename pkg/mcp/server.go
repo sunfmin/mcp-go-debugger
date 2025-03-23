@@ -106,6 +106,7 @@ func (s *MCPDebugServer) registerTools() {
 	s.addStepOverTool()
 	s.addStepOutTool()
 	s.addExamineVariableTool()
+	s.addListScopeVariablesTool()
 }
 
 // addPingTool adds a simple ping tool for health checks
@@ -269,6 +270,18 @@ func (s *MCPDebugServer) addExamineVariableTool() {
 	)
 	
 	s.server.AddTool(examineVarTool, s.ExamineVariable)
+}
+
+// addListScopeVariablesTool adds the list_scope_variables tool
+func (s *MCPDebugServer) addListScopeVariablesTool() {
+	listScopeVariablesTool := mcp.NewTool("list_scope_variables",
+		mcp.WithDescription("List all variables in the current scope (local, args, and package)"),
+		mcp.WithNumber("depth",
+			mcp.Description("Maximum depth to recurse into complex variables"),
+		),
+	)
+	
+	s.server.AddTool(listScopeVariablesTool, s.ListScopeVariables)
 }
 
 // Ping handles the ping command
@@ -612,6 +625,36 @@ func (s *MCPDebugServer) ExamineVariable(ctx context.Context, request mcp.CallTo
 	jsonBytes, err := json.Marshal(varInfo)
 	if err != nil {
 		return nil, fmt.Errorf("failed to serialize variable info: %v", err)
+	}
+	
+	return mcp.NewToolResultText(string(jsonBytes)), nil
+}
+
+// ListScopeVariables handles the list_scope_variables command
+func (s *MCPDebugServer) ListScopeVariables(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	// Check if we have an active debug session
+	if s.debugClient == nil || !s.debugClient.IsConnected() {
+		return nil, fmt.Errorf("no active debug session, please launch or attach to a program first")
+	}
+	
+	// Get the depth parameter, default to 1 if not provided
+	depth := 1
+	if depthVal, ok := request.Params.Arguments["depth"]; ok {
+		if depthFloat, ok := depthVal.(float64); ok {
+			depth = int(depthFloat)
+		}
+	}
+	
+	// List all scope variables
+	scopeVars, err := s.debugClient.ListScopeVariables(depth)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list scope variables: %v", err)
+	}
+	
+	// Convert to JSON
+	jsonBytes, err := json.Marshal(scopeVars)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal scope variables to JSON: %v", err)
 	}
 	
 	return mcp.NewToolResultText(string(jsonBytes)), nil
