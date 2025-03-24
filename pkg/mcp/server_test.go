@@ -30,7 +30,7 @@ func getTextContent(result *mcp.CallToolResult) string {
 
 // Helper function to find the line number for a specific statement in a file
 func findLineNumber(filePath, targetStatement string) (int, error) {
-	content, err := ioutil.ReadFile(filePath)
+	content, err := os.ReadFile(filePath)
 	if err != nil {
 		return 0, fmt.Errorf("failed to read file: %v", err)
 	}
