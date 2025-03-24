@@ -1,6 +1,6 @@
 # MCP Go Debugger
 
-A debugger interface for Go programs that integrates with MCP (Mission Control Protocol).
+A debugger interface for Go programs that integrates with MCP (Model Context Protocol).
 
 ## Features
 

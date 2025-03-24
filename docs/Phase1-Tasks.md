@@ -6,7 +6,7 @@ This document outlines the detailed tasks for implementing Phase 1 (Core Functio
 
 ## High-Level Goals
 
-- Set up MCP server using mark3labs/mcp-go
+- Set up Model Context Protocol (MCP) server using mark3labs/mcp-go
 - Embed Delve as a library dependency
 - Implement program launch and attach capabilities
 - Implement basic debugging commands (breakpoints, step, continue)
@@ -26,7 +26,7 @@ This document outlines the detailed tasks for implementing Phase 1 (Core Functio
 
 ### 2. Basic MCP Server Implementation
 
-- [x] **2.1** [P0] Implement basic MCP server with mark3labs/mcp-go *(depends on: 1.2)*
+- [x] **2.1** [P0] Implement basic Model Context Protocol server with mark3labs/mcp-go *(depends on: 1.2)*
 - [x] **2.2** [P0] Configure server name, version, and metadata *(depends on: 2.1)*
 - [x] **2.3** [P1] Implement error handling and logging framework *(depends on: 2.1-2.2)*
 - [x] **2.4** [P1] Set up MCP stdio communication interface *(depends on: 2.1-2.3)*

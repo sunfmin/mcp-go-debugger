@@ -1,6 +1,6 @@
 # Getting Started with MCP Go Debugger
 
-This guide will help you get started with the MCP Go Debugger, a tool that enables AI assistants to debug Go applications through the Machine Code Processor (MCP) protocol.
+This guide will help you get started with the MCP Go Debugger, a tool that enables AI assistants to debug Go applications through the Model Context Protocol (MCP).
 
 ## Installation
 

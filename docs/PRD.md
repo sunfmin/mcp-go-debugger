@@ -2,7 +2,7 @@
 
 ## Overview
 
-MCP Go Debugger is a Machine Code Processor (MCP) that integrates the Delve debugger for Go applications into Cursor or Claude Desktop. It enables AI assistants to debug Go applications at runtime by providing debugger functionality through an MCP server interface. The implementation will be built in Go using the [mark3labs/mcp-go](https://github.com/mark3labs/mcp-go) framework with Delve embedded directly within the MCP process.
+MCP Go Debugger is a Model Context Protocol (MCP) server that integrates the Delve debugger for Go applications into Cursor or Claude Desktop. It enables AI assistants to debug Go applications at runtime by providing debugger functionality through an MCP server interface. The implementation will be built in Go using the [mark3labs/mcp-go](https://github.com/mark3labs/mcp-go) framework with Delve embedded directly within the MCP process.
 
 ## Objectives
 
@@ -72,7 +72,7 @@ The MCP will embed Delve directly:
 ### MCP Server Implementation
 
 - Implement using mark3labs/mcp-go framework
-- Expose a standardized MCP interface for AI assistants
+- Expose a standardized Model Context Protocol interface for AI assistants
 - Provide direct access to Delve functionality via MCP tools
 - Handle errors and provide meaningful feedback
 
