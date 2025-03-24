@@ -535,7 +535,7 @@ func processFurther(value int) int {
 	return goFile
 }
 
-func TestDebugSingleTest(t *testing.T) {
+func TestDebugTest(t *testing.T) {
 	// Skip test in short mode
 	if testing.Short() {
 		t.Skip("Skipping integration test in short mode")
@@ -563,17 +563,16 @@ func TestDebugSingleTest(t *testing.T) {
 	server := NewMCPDebugServer("test-version")
 	ctx := context.Background()
 
-	// Step 1: Launch the debug single test
+	// Step 1: Launch the debug test
 	debugTestRequest := mcp.CallToolRequest{}
 	debugTestRequest.Params.Arguments = map[string]interface{}{
-		"testfile":  testFilePath,
-		"testname":  "TestAdd",
-		"testflags": []interface{}{"-test.timeout=10s"},
+		"testfile": testFilePath,
+		"testname": "TestAdd",
 	}
 
-	debugResult, err := server.DebugSingleTest(ctx, debugTestRequest)
+	debugResult, err := server.DebugTest(ctx, debugTestRequest)
 	if err != nil {
-		t.Fatalf("Failed to debug single test: %v", err)
+		t.Fatalf("Failed to debug test: %v", err)
 	}
 
 	debugText := getTextContent(debugResult)
@@ -750,5 +749,5 @@ func TestDebugSingleTest(t *testing.T) {
 	closeText := getTextContent(closeResult)
 	t.Logf("Debug session close result: %s", closeText)
 
-	t.Log("TestDebugSingleTest completed successfully")
+	t.Log("TestDebugTest completed successfully")
 }

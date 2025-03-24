@@ -346,7 +346,7 @@ Exposed MCP commands:
 - `launch`: Launch a Go program with debugging enabled
 - `attach`: Attach to a running Go process
 - `debug`: Compile and debug a Go source file directly
-- `debug_single_test`: Compile and debug a single Go test function
+- `debug_test`: Compile and debug a Go test function
 - `set_breakpoint`: Set a breakpoint at a specific location
 - `list_breakpoints`: List all active breakpoints
 - `remove_breakpoint`: Remove a specific breakpoint

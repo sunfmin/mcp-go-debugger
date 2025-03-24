@@ -411,8 +411,8 @@ func (c *Client) DebugSourceFile(sourceFile string, args []string) error {
 	return nil
 }
 
-// DebugSingleTest compiles and debugs a single Go test function
-func (c *Client) DebugSingleTest(testFilePath string, testName string, testFlags []string) error {
+// DebugTest compiles and debugs a Go test function
+func (c *Client) DebugTest(testFilePath string, testName string, testFlags []string) error {
 	if c.client != nil {
 		return fmt.Errorf("debug session already active")
 	}

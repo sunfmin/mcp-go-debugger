@@ -79,7 +79,7 @@ func (s *MCPDebugServer) registerTools() {
 	s.addListBreakpointsTool()
 	s.addRemoveBreakpointTool()
 	s.addDebugSourceFileTool()
-	s.addDebugSingleTestTool()
+	s.addDebugTestTool()
 	s.addContinueTool()
 	s.addStepTool()
 	s.addStepOverTool()
@@ -201,13 +201,13 @@ func (s *MCPDebugServer) addDebugSourceFileTool() {
 	s.server.AddTool(debugTool, s.DebugSourceFile)
 }
 
-// addDebugSingleTestTool adds a tool for debugging a single Go test function
-func (s *MCPDebugServer) addDebugSingleTestTool() {
-	debugSingleTestTool := mcp.NewTool("debug_single_test",
-		mcp.WithDescription("Debug a single Go test function"),
+// addDebugTestTool adds a tool for debugging a Go test function
+func (s *MCPDebugServer) addDebugTestTool() {
+	debugTestTool := mcp.NewTool("debug_test",
+		mcp.WithDescription("Debug a Go test function"),
 		mcp.WithString("testfile",
 			mcp.Required(),
-			mcp.Description("Path to the test file"),
+			mcp.Description("Absolute Path to the test file"),
 		),
 		mcp.WithString("testname",
 			mcp.Required(),
@@ -218,7 +218,7 @@ func (s *MCPDebugServer) addDebugSingleTestTool() {
 		),
 	)
 
-	s.server.AddTool(debugSingleTestTool, s.DebugSingleTest)
+	s.server.AddTool(debugTestTool, s.DebugTest)
 }
 
 // addContinueTool adds the continue_execution tool
@@ -742,9 +742,9 @@ func (s *MCPDebugServer) GetDebuggerOutput(ctx context.Context, req mcp.CallTool
 	return mcp.NewToolResultText(string(outputJSON)), nil
 }
 
-// DebugSingleTest compiles and debugs a single Go test function
-func (s *MCPDebugServer) DebugSingleTest(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	logger.Debug("Received debug_single_test request")
+// DebugTest compiles and debugs a Go test function
+func (s *MCPDebugServer) DebugTest(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	logger.Debug("Received debug_test request")
 
 	// Create client if needed
 	if s.debugClient == nil {
@@ -783,7 +783,7 @@ func (s *MCPDebugServer) DebugSingleTest(ctx context.Context, request mcp.CallTo
 	}
 
 	// Debug the test
-	err := s.debugClient.DebugSingleTest(testFile, testName, testFlags)
+	err := s.debugClient.DebugTest(testFile, testName, testFlags)
 	if err != nil {
 		return newErrorResult("Failed to debug test: %v", err), nil
 	}

@@ -12,7 +12,7 @@ A debugger interface for Go programs that integrates with MCP (Model Context Pro
 - View stack traces
 - List all variables in current scope
 - Get current execution position
-- Debug individual test functions with `debug_single_test`
+- Debug individual test functions with `debug_test`
 - Native integration with Delve debugger API types
 - Capture and display program output during debugging
 - Support for custom test flags when debugging tests
@@ -83,7 +83,7 @@ This debugger is designed to be integrated with MCP-compatible clients. The tool
 - `launch` - Launch a Go program with debugging
 - `attach` - Attach to a running Go process
 - `debug` - Debug a Go source file directly
-- `debug_single_test` - Debug a specific Go test function
+- `debug_test` - Debug a specific Go test function
 - `set_breakpoint` - Set a breakpoint at a specific file and line
 - `list_breakpoints` - List all current breakpoints
 - `remove_breakpoint` - Remove a breakpoint
@@ -140,7 +140,7 @@ If you want to debug a specific test function instead of an entire application:
 > Please debug the TestCalculateTotal function in my calculator_test.go file
 ```
 
-The AI assistant will use the `debug_single_test` tool to:
+The AI assistant will use the `debug_test` tool to:
 - Launch only the specific test with debugging enabled
 - Set breakpoints at key points in the test
 - Help you inspect variables as the test executes
