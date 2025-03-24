@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/go-delve/delve/service/api"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 	"github.com/sunfmin/mcp-go-debugger/pkg/debugger"
@@ -14,8 +15,8 @@ import (
 
 // StatusResponse represents the status output
 type StatusResponse struct {
-	Server   ServerInfo   `json:"server"`
-	Debugger DebuggerInfo `json:"debugger"`
+	Server   ServerInfo       `json:"server"`
+	Debugger api.DebuggerState `json:"debugger"`
 }
 
 // ServerInfo holds information about the MCP server
@@ -25,33 +26,10 @@ type ServerInfo struct {
 	Uptime  string `json:"uptime"`
 }
 
-// DebuggerInfo holds information about the debugger connection
-type DebuggerInfo struct {
-	Connected bool   `json:"connected"`
-	Target    string `json:"target,omitempty"`
-	PID       int    `json:"pid,omitempty"`
-}
-
-// BreakpointResponse represents the set_breakpoint output
-type BreakpointResponse struct {
-	ID      int    `json:"id"`
-	File    string `json:"file"`
-	Line    int    `json:"line"`
-	Message string `json:"message"`
-}
-
 // BreakpointsListResponse represents the list_breakpoints output
 type BreakpointsListResponse struct {
-	Breakpoints []BreakpointInfo `json:"breakpoints"`
+	Breakpoints []*api.Breakpoint `json:"breakpoints"`
 	Count       int              `json:"count"`
-}
-
-// BreakpointInfo contains information about a single breakpoint
-type BreakpointInfo struct {
-	ID      int    `json:"id"`
-	File    string `json:"file"`
-	Line    int    `json:"line"`
-	Active  bool   `json:"active"`
 }
 
 // MCPDebugServer encapsulates the MCP server with debug functionality
@@ -340,32 +318,33 @@ func (s *MCPDebugServer) Ping(ctx context.Context, request mcp.CallToolRequest) 
 }
 
 // Status handles the status command
-func (s *MCPDebugServer) Status(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+func (s *MCPDebugServer) Status(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	logger.Debug("Received status request")
 	
-	// Create a structured response
+	// Calculate uptime - using current time since we don't have StartTime method
+	uptime := time.Now().Format(time.RFC3339)
+	
+	// Get debugger status
+	debuggerState, err := s.debugClient.GetDebuggerState()
+	if err != nil {
+		debuggerState = &api.DebuggerState{}
+		logger.Debug("Failed to get debugger state: %v", err)
+	}
+	
+	// Build response
 	status := StatusResponse{
 		Server: ServerInfo{
-			Name:    "Go Debugger MCP",
+			Name:    "Go Debugger MCP", // Hardcoded name since we don't have Name method
 			Version: s.version,
-			Uptime:  time.Now().String(), // In a real implementation, we would track the actual uptime
+			Uptime:  uptime,
 		},
-		Debugger: DebuggerInfo{
-			Connected: s.debugClient.IsConnected(),
-		},
+		Debugger: *debuggerState,
 	}
 	
-	// Add target program info if connected
-	if s.debugClient.IsConnected() {
-		status.Debugger.Target = s.debugClient.GetTarget()
-		status.Debugger.PID = s.debugClient.GetPid()
-	}
-	
-	// Convert to JSON string
+	// Convert to JSON
 	jsonBytes, err := json.Marshal(status)
 	if err != nil {
-		// Return error as part of the tool result rather than as a Go error
-		return newErrorResult("failed to serialize status: %v", err), nil
+		return mcp.NewToolResultText(fmt.Sprintf("Error serializing status: %v", err)), nil
 	}
 	
 	return mcp.NewToolResultText(string(jsonBytes)), nil
@@ -459,30 +438,36 @@ func (s *MCPDebugServer) SetBreakpoint(ctx context.Context, request mcp.CallTool
 		return newErrorResult("no active debug session, please launch or attach first"), nil
 	}
 	
-	file := request.Params.Arguments["file"].(string)
-	lineFloat := request.Params.Arguments["line"].(float64)
-	line := int(lineFloat)
+	// Parse parameters
+	file, ok := request.Params.Arguments["file"].(string)
+	if !ok || file == "" {
+		return newErrorResult("file parameter is required"), nil
+	}
 	
-	bp, err := s.debugClient.SetBreakpoint(file, line)
+	lineVal, ok := request.Params.Arguments["line"]
+	if !ok {
+		return newErrorResult("line parameter is required"), nil
+	}
+	
+	line, ok := lineVal.(float64)
+	if !ok {
+		return newErrorResult("line parameter must be a number"), nil
+	}
+	
+	// Set the breakpoint
+	bp, err := s.debugClient.SetBreakpoint(file, int(line))
 	if err != nil {
-		logger.Error("Failed to set breakpoint", "error", err, "file", file, "line", line)
+		logger.Error("Failed to set breakpoint", "error", err)
 		return newErrorResult("failed to set breakpoint: %v", err), nil
 	}
 	
-	logger.Info("Breakpoint set successfully", "id", bp.ID, "file", file, "line", line)
+	// Add a log message
+	logger.Info("Breakpoint set successfully", "id", bp.ID, "file", file, "line", int(line))
 	
-	// Create a structured response
-	result := BreakpointResponse{
-		ID:      bp.ID,
-		File:    bp.File,
-		Line:    bp.Line,
-		Message: fmt.Sprintf("Breakpoint set at %s:%d (ID: %d)", bp.File, bp.Line, bp.ID),
-	}
-	
-	// Convert to JSON string
-	jsonBytes, err := json.Marshal(result)
+	// Return the breakpoint as JSON
+	jsonBytes, err := json.Marshal(bp)
 	if err != nil {
-		return newErrorResult("failed to serialize breakpoint info: %v", err), nil
+		return newErrorResult("failed to serialize breakpoint: %v", err), nil
 	}
 	
 	return mcp.NewToolResultText(string(jsonBytes)), nil
@@ -496,32 +481,23 @@ func (s *MCPDebugServer) ListBreakpoints(ctx context.Context, request mcp.CallTo
 		return newErrorResult("no active debug session, please launch or attach first"), nil
 	}
 	
+	// Get breakpoints from debug client
 	breakpoints, err := s.debugClient.ListBreakpoints()
 	if err != nil {
 		logger.Error("Failed to list breakpoints", "error", err)
 		return newErrorResult("failed to list breakpoints: %v", err), nil
 	}
 	
-	// Create structured response
+	// Create a structured response
 	response := BreakpointsListResponse{
-		Breakpoints: make([]BreakpointInfo, 0, len(breakpoints)),
+		Breakpoints: breakpoints,
 		Count:       len(breakpoints),
-	}
-	
-	// Convert Delve breakpoints to our response format
-	for _, bp := range breakpoints {
-		response.Breakpoints = append(response.Breakpoints, BreakpointInfo{
-			ID:      bp.ID,
-			File:    bp.File,
-			Line:    bp.Line,
-			Active:  true, // Assume active if returned by Delve
-		})
 	}
 	
 	// Convert to JSON string
 	jsonBytes, err := json.Marshal(response)
 	if err != nil {
-		return newErrorResult("failed to serialize breakpoints list: %v", err), nil
+		return newErrorResult("failed to serialize breakpoints: %v", err), nil
 	}
 	
 	return mcp.NewToolResultText(string(jsonBytes)), nil

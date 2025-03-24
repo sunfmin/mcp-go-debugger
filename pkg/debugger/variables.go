@@ -20,8 +20,15 @@ type VariableInfo struct {
 	Length   int64          `json:"length,omitempty"`
 }
 
+// ScopeVariables represents all variables in the current scope
+type ScopeVariables struct {
+	Local   []api.Variable `json:"local"`
+	Args    []api.Variable `json:"args"`
+	Package []api.Variable `json:"package"`
+}
+
 // ExamineVariable evaluates and returns information about a variable
-func (c *Client) ExamineVariable(name string, depth int) (*VariableInfo, error) {
+func (c *Client) ExamineVariable(name string, depth int) (*api.Variable, error) {
 	if c.client == nil {
 		return nil, fmt.Errorf("no active debug session")
 	}
@@ -69,16 +76,7 @@ func (c *Client) ExamineVariable(name string, depth int) (*VariableInfo, error) 
 		return nil, fmt.Errorf("failed to examine variable: %v", err)
 	}
 
-	// Convert api.Variable to our VariableInfo structure
-	varInfo := convertVariableToInfo(variable, depth)
-	return varInfo, nil
-}
-
-// ScopeVariables represents all variables in the current scope
-type ScopeVariables struct {
-	Local   []VariableInfo `json:"local"`
-	Args    []VariableInfo `json:"args"`
-	Package []VariableInfo `json:"package"`
+	return variable, nil
 }
 
 // ListScopeVariables lists all variables in the current scope (local, args, and package)
@@ -142,26 +140,11 @@ func (c *Client) ListScopeVariables(depth int) (*ScopeVariables, error) {
 		return nil, fmt.Errorf("failed to list function arguments: %v", err)
 	}
 
-	// Convert variables to our VariableInfo structure
+	// Create the result with the variables
 	result := &ScopeVariables{
-		Local: make([]VariableInfo, 0, len(localVars)),
-		Args:  make([]VariableInfo, 0, len(args)),
-	}
-
-	// Add local variables
-	for i := range localVars {
-		info := convertVariableToInfo(&localVars[i], depth)
-		if info != nil {
-			result.Local = append(result.Local, *info)
-		}
-	}
-
-	// Add function arguments
-	for i := range args {
-		info := convertVariableToInfo(&args[i], depth)
-		if info != nil {
-			result.Args = append(result.Args, *info)
-		}
+		Local: localVars,
+		Args:  args,
+		Package: nil,
 	}
 
 	return result, nil

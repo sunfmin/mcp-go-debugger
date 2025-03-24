@@ -11,8 +11,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-delve/delve/service/api"
 	"github.com/mark3labs/mcp-go/mcp"
+	"github.com/sunfmin/mcp-go-debugger/pkg/debugger"
 )
+
+// We'll use the package-level types from server.go for API responses
 
 func getTextContent(result *mcp.CallToolResult) string {
 	if result == nil || len(result.Content) == 0 {
@@ -44,6 +48,22 @@ func findLineNumber(filePath, targetStatement string) int {
 	}
 
 	panic(fmt.Sprintf("statement not found: %s", targetStatement))
+}
+
+// Helper function to unmarshal JSON data and panic if it fails
+func mustUnmarshalJSON(data string, v interface{}) {
+	if err := json.Unmarshal([]byte(data), v); err != nil {
+		panic(fmt.Sprintf("failed to unmarshal JSON: %v", err))
+	}
+}
+
+// Helper function to get text content from result and unmarshal it to the provided variable
+func mustGetAndUnmarshalJSON(result *mcp.CallToolResult, v interface{}) {
+	text := getTextContent(result)
+	if text == "" {
+		panic("empty text content in result")
+	}
+	mustUnmarshalJSON(text, v)
 }
 
 func TestDebugWorkflow(t *testing.T) {
@@ -115,11 +135,9 @@ func TestDebugWorkflow(t *testing.T) {
 		t.Fatalf("Failed to set breakpoint: %v", err)
 	}
 
-	breakpointText := getTextContent(breakpointResult)
-	var breakpointResponse BreakpointResponse
-	if err := json.Unmarshal([]byte(breakpointText), &breakpointResponse); err != nil {
-		t.Fatalf("Failed to parse breakpoint response: %v", err)
-	}
+	t.Logf("Breakpoint response: %s", getTextContent(breakpointResult))
+	var breakpointResponse api.Breakpoint
+	mustGetAndUnmarshalJSON(breakpointResult, &breakpointResponse)
 
 	if breakpointResponse.ID <= 0 {
 		t.Errorf("Expected valid breakpoint ID, got: %d", breakpointResponse.ID)
@@ -132,11 +150,9 @@ func TestDebugWorkflow(t *testing.T) {
 		t.Fatalf("Failed to list breakpoints: %v", err)
 	}
 
-	listText := getTextContent(listResult)
+	t.Logf("List breakpoints response: %s", getTextContent(listResult))
 	var breakpointsListResponse BreakpointsListResponse
-	if err := json.Unmarshal([]byte(listText), &breakpointsListResponse); err != nil {
-		t.Fatalf("Failed to parse breakpoints list response: %v", err)
-	}
+	mustGetAndUnmarshalJSON(listResult, &breakpointsListResponse)
 
 	if breakpointsListResponse.Count == 0 {
 		t.Errorf("Expected at least one breakpoint, got none")
@@ -165,9 +181,7 @@ func TestDebugWorkflow(t *testing.T) {
 
 	listText2 := getTextContent(listResult2)
 	var breakpointsListResponse2 BreakpointsListResponse
-	if err := json.Unmarshal([]byte(listText2), &breakpointsListResponse2); err != nil {
-		t.Fatalf("Failed to parse second breakpoints list response: %v", err)
-	}
+	mustUnmarshalJSON(listText2, &breakpointsListResponse2)
 
 	// We need to have at least as many breakpoints as we explicitly set
 	if breakpointsListResponse2.Count < 2 {
@@ -188,11 +202,10 @@ func TestDebugWorkflow(t *testing.T) {
 	t.Logf("Debugger status before continue: %s", statusText)
 
 	var statusResponse StatusResponse
-	if err := json.Unmarshal([]byte(statusText), &statusResponse); err != nil {
-		t.Fatalf("Failed to parse status response: %v", err)
-	}
+	mustUnmarshalJSON(statusText, &statusResponse)
 
-	if !statusResponse.Debugger.Connected {
+	// Check that the debugger is connected using the Delve API state
+	if statusResponse.Debugger.Pid == 0 {
 		t.Fatalf("Expected debugger to be connected before continuing")
 	}
 
@@ -245,69 +258,44 @@ func TestDebugWorkflow(t *testing.T) {
 	t.Logf("Current execution position: %s", positionText)
 
 	// Parse the position info
-	var positionInfo map[string]interface{}
-	if err := json.Unmarshal([]byte(positionText), &positionInfo); err != nil {
-		t.Fatalf("Failed to parse execution position info: %v", err)
-	}
+	var positionInfo api.Location
+	mustGetAndUnmarshalJSON(positionResult, &positionInfo)
 
 	// Verify we're at the expected line in the calculate function
-	if file, ok := positionInfo["file"].(string); !ok || !strings.Contains(file, "main.go") {
-		t.Errorf("Expected to be in main.go, got %v", file)
+	if !strings.Contains(positionInfo.File, "main.go") {
+		t.Errorf("Expected to be in main.go, got %v", positionInfo.File)
 	}
 
-	if line, ok := positionInfo["line"].(float64); !ok || int(line) != aVarLine {
-		t.Errorf("Expected to be at line %d, got %v", aVarLine, line)
+	if positionInfo.Line != aVarLine {
+		t.Errorf("Expected to be at line %d, got %v", aVarLine, positionInfo.Line)
 	}
 
-	if function, ok := positionInfo["function"].(string); !ok || !strings.Contains(function, "calculate") {
-		t.Errorf("Expected to be in function 'calculate', got %v", function)
+	if !strings.Contains(positionInfo.Function.Name(), "calculate") {
+		t.Errorf("Expected to be in function 'calculate', got %v", positionInfo.Function.Name())
 	}
 
 	// Parse the scope variables info
-	var scopeVarsInfo map[string]interface{}
-	if err := json.Unmarshal([]byte(listScopeVarsText), &scopeVarsInfo); err != nil {
-		t.Fatalf("Failed to parse scope variables info: %v", err)
-	}
+	var scopeVarsInfo debugger.ScopeVariables
+	mustUnmarshalJSON(listScopeVarsText, &scopeVarsInfo)
 
-	// Verify the scope variables contain expected variables
-	localVars, localVarsOk := scopeVarsInfo["local"].([]interface{})
-	if !localVarsOk {
-		t.Fatalf("Failed to extract local variables from scope variables info")
-	}
-
-	args, argsOk := scopeVarsInfo["args"].([]interface{})
-	if !argsOk {
-		t.Fatalf("Failed to extract args from scope variables info")
-	}
-
-	// Verify we have the expected function argument
+	// Verify that we have the expected function argument
+	// Note: The debugger may include return values in the Args list so we need to find 'n' specifically
 	foundNArg := false
-	for _, arg := range args {
-		argMap, ok := arg.(map[string]interface{})
-		if !ok {
-			continue
-		}
-
-		name, nameOk := argMap["name"].(string)
-		if nameOk && name == "n" {
-			value, valueOk := argMap["value"].(string)
-			if valueOk && value == "10" {
-				foundNArg = true
-				break
+	for _, arg := range scopeVarsInfo.Args {
+		if arg.Name == "n" {
+			foundNArg = true
+			if arg.Value != "10" {
+				t.Errorf("Expected function argument 'n' to have value '10', got '%s'", arg.Value)
 			}
 		}
 	}
 
 	if !foundNArg {
-		t.Errorf("Expected to find function argument 'n' with value '10' in scope variables")
+		t.Errorf("Did not find expected function argument 'n' in arguments: %v", scopeVarsInfo.Args)
 	}
 
-	// Check if we have local variables (optional at this point in execution)
-	if len(localVars) == 0 {
-		t.Logf("No local variables found yet (expected at beginning of function)")
-	} else {
-		t.Logf("Found %d local variables", len(localVars))
-	}
+	// Verify we have some local variables 
+	t.Logf("Found %d local variables", len(scopeVarsInfo.Local))
 
 	// Step 8: Examine variable 'n' at the first breakpoint in calculate()
 	examineRequest := mcp.CallToolRequest{}
@@ -325,18 +313,12 @@ func TestDebugWorkflow(t *testing.T) {
 	t.Logf("Variable n value: %s", examineText)
 
 	// Parse the variable info
-	var nVarInfo map[string]interface{}
-	if err := json.Unmarshal([]byte(examineText), &nVarInfo); err != nil {
-		t.Fatalf("Failed to parse variable n info: %v", err)
-	}
+	var nVarInfo api.Variable
+	mustUnmarshalJSON(examineText, &nVarInfo)
 
 	// Verify the variable value is what we expect
-	if nValue, ok := nVarInfo["value"].(string); ok {
-		if nValue != "10" {
-			t.Fatalf("Expected n to be 10, got %s", nValue)
-		}
-	} else {
-		t.Fatalf("Failed to extract value from variable n info")
+	if nVarInfo.Value != "10" {
+		t.Fatalf("Expected n to be 10, got %s", nVarInfo.Value)
 	}
 
 	// Step 9: Use step over to go to the next line
@@ -368,18 +350,12 @@ func TestDebugWorkflow(t *testing.T) {
 	t.Logf("Variable a value: %s", examineText2)
 
 	// Parse the variable info
-	var aVarInfo map[string]interface{}
-	if err := json.Unmarshal([]byte(examineText2), &aVarInfo); err != nil {
-		t.Fatalf("Failed to parse variable a info: %v", err)
-	}
+	var aVarInfo api.Variable
+	mustUnmarshalJSON(examineText2, &aVarInfo)
 
 	// Verify the variable value is what we expect (a = n * 2, so a = 20)
-	if aValue, ok := aVarInfo["value"].(string); ok {
-		if aValue != "20" {
-			t.Fatalf("Expected a to be 20, got %s", aValue)
-		}
-	} else {
-		t.Fatalf("Failed to extract value from variable a info")
+	if aVarInfo.Value != "20" {
+		t.Fatalf("Expected a to be 20, got %s", aVarInfo.Value)
 	}
 
 	// Step 11: Step over again
@@ -419,9 +395,7 @@ func TestDebugWorkflow(t *testing.T) {
 
 	listText3 := getTextContent(listResult3)
 	var breakpointsListResponse3 BreakpointsListResponse
-	if err := json.Unmarshal([]byte(listText3), &breakpointsListResponse3); err != nil {
-		t.Fatalf("Failed to parse third breakpoints list response: %v", err)
-	}
+	mustUnmarshalJSON(listText3, &breakpointsListResponse3)
 
 	// We should have exactly one less breakpoint than before
 	expectedCount := initialBreakpointCount - 1
@@ -622,11 +596,9 @@ func TestDebugSingleTest(t *testing.T) {
 		t.Fatalf("Failed to set breakpoint: %v", err)
 	}
 
-	breakpointText := getTextContent(breakpointResult)
-	var breakpointResponse BreakpointResponse
-	if err := json.Unmarshal([]byte(breakpointText), &breakpointResponse); err != nil {
-		t.Fatalf("Failed to parse breakpoint response: %v, %s", err, breakpointText)
-	}
+	t.Logf("Breakpoint response: %s", getTextContent(breakpointResult))
+	var breakpointResponse api.Breakpoint
+	mustGetAndUnmarshalJSON(breakpointResult, &breakpointResponse)
 
 	if breakpointResponse.ID <= 0 {
 		t.Errorf("Expected valid breakpoint ID, got: %d", breakpointResponse.ID)
@@ -657,25 +629,22 @@ func TestDebugSingleTest(t *testing.T) {
 	t.Logf("Current execution position: %s", positionText)
 
 	// Parse the position info
-	var positionInfo map[string]interface{}
-	if err := json.Unmarshal([]byte(positionText), &positionInfo); err != nil {
-		t.Fatalf("Failed to parse execution position info: %v", err)
-	}
+	var positionInfo api.Location
+	mustGetAndUnmarshalJSON(positionResult, &positionInfo)
 
 	// Verify we're at the expected line in the TestAdd function
-	if file, ok := positionInfo["file"].(string); !ok || !strings.Contains(file, "calculator_test.go") {
-		t.Errorf("Expected to be in calculator_test.go, got %v", file)
+	if !strings.Contains(positionInfo.File, "calculator_test.go") {
+		t.Errorf("Expected to be in calculator_test.go, got %v", positionInfo.File)
 	}
 
-	if line, ok := positionInfo["line"].(float64); !ok || int(line) != addCallLine {
-		t.Errorf("Expected to be at line %d, got %v", addCallLine, line)
+	if positionInfo.Line != addCallLine {
+		t.Errorf("Expected to be at line %d, got %v", addCallLine, positionInfo.Line)
 	}
 
-	funcName, _ := positionInfo["function"].(string)
-	if !strings.Contains(funcName, "TestAdd") {
-		t.Errorf("Expected to be in TestAdd function, got %s", funcName)
+	if !strings.Contains(positionInfo.Function.Name(), "TestAdd") {
+		t.Errorf("Expected to be in TestAdd function, got %s", positionInfo.Function.Name())
 	}
-	t.Logf("Current function: %s", funcName)
+	t.Logf("Current function: %s", positionInfo.Function.Name())
 
 	// Add step to list variables in scope to see what's available
 	scopeRequest := mcp.CallToolRequest{}
@@ -688,10 +657,8 @@ func TestDebugSingleTest(t *testing.T) {
 	t.Logf("Available variables in scope: %s", scopeText)
 	
 	// Parse the scope variables 
-	var scopeVars map[string]interface{}
-	if err := json.Unmarshal([]byte(scopeText), &scopeVars); err != nil {
-		t.Fatalf("Failed to parse scope variables: %v", err)
-	}
+	var scopeVars debugger.ScopeVariables
+	mustUnmarshalJSON(scopeText, &scopeVars)
 
 	// First try to examine 't', which should be available in all test functions
 	examineRequest := mcp.CallToolRequest{}
@@ -746,15 +713,12 @@ func TestDebugSingleTest(t *testing.T) {
 		
 		// If we got a valid result, verify it
 		if !strings.Contains(resultText, "Error:") {
-			var resultInfo map[string]interface{}
-			if err := json.Unmarshal([]byte(resultText), &resultInfo); err != nil {
-				t.Logf("Failed to parse result variable info: %v", err)
-			} else if value, ok := resultInfo["value"].(string); ok {
-				t.Logf("Add(2,3) returned %s", value)
-				// Don't fail the test if this doesn't match, just log it
-				if value != "5" {
-					t.Logf("WARNING: Expected result to be 5, got %s", value)
-				}
+			var resultInfo api.Variable
+			mustUnmarshalJSON(resultText, &resultInfo)
+			t.Logf("Add(2,3) returned %s", resultInfo.Value)
+			// Don't fail the test if this doesn't match, just log it
+			if resultInfo.Value != "5" {
+				t.Logf("WARNING: Expected result to be 5, got %s", resultInfo.Value)
 			}
 		}
 	}

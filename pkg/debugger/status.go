@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/go-delve/delve/service/api"
 	"github.com/sunfmin/mcp-go-debugger/pkg/logger"
 )
 
@@ -97,4 +98,18 @@ func connectionStatusString(status *Status) string {
 	}
 	
 	return fmt.Sprintf("stopped at %s:%d", status.CurrentFile, status.CurrentLine)
+}
+
+// GetDebuggerState returns a complete Delve API DebuggerState
+func (c *Client) GetDebuggerState() (*api.DebuggerState, error) {
+	if c.client == nil {
+		return nil, fmt.Errorf("no active debug session")
+	}
+	
+	state, err := c.client.GetState()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get debugger state: %v", err)
+	}
+	
+	return state, nil
 } 

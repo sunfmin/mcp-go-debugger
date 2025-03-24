@@ -5,21 +5,12 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/go-delve/delve/service/api"
 	"github.com/sunfmin/mcp-go-debugger/pkg/logger"
 )
 
-// PositionInfo holds information about the current execution position
-type PositionInfo struct {
-	File     string `json:"file"`
-	Line     int    `json:"line"`
-	Function string `json:"function"`
-	PC       uint64 `json:"pc"`
-	GoroutineID int64 `json:"goroutineID"`
-	Running  bool   `json:"running"`
-}
-
 // GetExecutionPosition returns the current execution position (file, line, function)
-func (c *Client) GetExecutionPosition() (*PositionInfo, error) {
+func (c *Client) GetExecutionPosition() (*api.Location, error) {
 	if c.client == nil {
 		return nil, fmt.Errorf("no active debug session")
 	}
@@ -33,11 +24,10 @@ func (c *Client) GetExecutionPosition() (*PositionInfo, error) {
 	}
 
 	if state.Exited {
-		return &PositionInfo{
-			File:     "",
-			Line:     0,
-			Function: "",
-			Running:  false,
+		return &api.Location{
+			File: "",
+			Line: 0,
+			PC:   0,
 		}, fmt.Errorf("program has exited with status %d", state.ExitStatus)
 	}
 
@@ -48,17 +38,13 @@ func (c *Client) GetExecutionPosition() (*PositionInfo, error) {
 		// Try to halt the program
 		_, err = c.client.Halt()
 		if err != nil {
-			return &PositionInfo{
-				Running: true,
-			}, fmt.Errorf("program is running but couldn't halt: %v", err)
+			return &api.Location{}, fmt.Errorf("program is running but couldn't halt: %v", err)
 		}
 		
 		// Wait a short time for halt to complete
 		stoppedState, err := waitForStop(c, 2*time.Second)
 		if err != nil {
-			return &PositionInfo{
-				Running: true,
-			}, fmt.Errorf("program is running but couldn't get position: %v", err)
+			return &api.Location{}, fmt.Errorf("program is running but couldn't get position: %v", err)
 		}
 		
 		state = stoppedState
@@ -78,26 +64,26 @@ func (c *Client) GetExecutionPosition() (*PositionInfo, error) {
 		return nil, fmt.Errorf("no current thread available")
 	}
 
-	// Get position information
-	position := &PositionInfo{
-		File:        state.CurrentThread.File,
-		Line:        state.CurrentThread.Line,
-		Function:    state.CurrentThread.Function.Name(),
-		PC:          state.CurrentThread.PC,
-		GoroutineID: state.CurrentThread.GoroutineID,
-		Running:     state.Running,
+	// We need to create a wrapper around the location that includes additional information
+	// like goroutine ID and running state which aren't part of api.Location
+	loc := &api.Location{
+		PC:       state.CurrentThread.PC,
+		File:     state.CurrentThread.File,
+		Line:     state.CurrentThread.Line,
+		Function: state.CurrentThread.Function,
 	}
 
 	// Try to convert file path to short form
-	if absPath, err := filepath.Abs(position.File); err == nil {
+	if absPath, err := filepath.Abs(loc.File); err == nil {
 		// Try to make it relative to current directory
 		if rel, err := filepath.Rel(".", absPath); err == nil && !filepath.IsAbs(rel) {
-			position.File = rel
+			loc.File = rel
 		}
 	}
 
+	// Include goroutineID in debug logging
 	logger.Debug("Current position: %s:%d in function %s (goroutine %d)",
-		position.File, position.Line, position.Function, position.GoroutineID)
+		loc.File, loc.Line, loc.Function.Name(), state.CurrentThread.GoroutineID)
 
-	return position, nil
+	return loc, nil
 } 
