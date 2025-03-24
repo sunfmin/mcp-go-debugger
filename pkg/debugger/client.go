@@ -53,7 +53,7 @@ func (c *Client) LaunchProgram(program string, args []string) error {
 		return fmt.Errorf("debug session already active")
 	}
 
-	logger.Printf("DEBUG: Starting LaunchProgram for %s", program)
+	logger.Debug("Starting LaunchProgram for %s", program)
 
 	// Ensure program file exists and is executable
 	absPath, err := filepath.Abs(program)
@@ -65,18 +65,18 @@ func (c *Client) LaunchProgram(program string, args []string) error {
 		return fmt.Errorf("program file not found: %s", absPath)
 	}
 
-	logger.Printf("DEBUG: Getting free port")
+	logger.Debug("Getting free port")
 	// Get an available port for the debug server
 	port, err := getFreePort()
 	if err != nil {
 		return fmt.Errorf("failed to find available port: %v", err)
 	}
 
-	logger.Printf("DEBUG: Setting up Delve logging")
+	logger.Debug("Setting up Delve logging")
 	// Configure Delve logging
 	logflags.Setup(false, "", "")
 
-	logger.Printf("DEBUG: Creating listener on port %d", port)
+	logger.Debug("Creating listener on port %d", port)
 	// Create a listener for the debug server
 	listener, err := net.Listen("tcp", fmt.Sprintf("localhost:%d", port))
 	if err != nil {
@@ -95,7 +95,7 @@ func (c *Client) LaunchProgram(program string, args []string) error {
 		return fmt.Errorf("failed to create stderr redirector: %v", err)
 	}
 
-	logger.Printf("DEBUG: Creating Delve config")
+	logger.Debug("Creating Delve config")
 	// Create Delve config
 	config := &service.Config{
 		Listener:    listener,
@@ -116,7 +116,7 @@ func (c *Client) LaunchProgram(program string, args []string) error {
 	go c.captureOutput(stdoutReader, "stdout")
 	go c.captureOutput(stderrReader, "stderr")
 
-	logger.Printf("DEBUG: Creating debug server")
+	logger.Debug("Creating debug server")
 	// Create and start the debugging server
 	server := rpccommon.NewServer(config)
 	if server == nil {
@@ -128,19 +128,19 @@ func (c *Client) LaunchProgram(program string, args []string) error {
 	// Create a channel to signal when the server is ready or fails
 	serverReady := make(chan error, 1)
 
-	logger.Printf("DEBUG: Starting debug server in goroutine")
+	logger.Debug("Starting debug server in goroutine")
 	// Start server in a goroutine
 	go func() {
-		logger.Printf("DEBUG: Running server")
+		logger.Debug("Running server")
 		err := server.Run()
 		if err != nil {
-			logger.Printf("Debug server error: %v", err)
+			logger.Debug("Debug server error: %v", err)
 			serverReady <- err
 		}
-		logger.Printf("DEBUG: Server run completed")
+		logger.Debug("Server run completed")
 	}()
 
-	logger.Printf("DEBUG: Waiting for server to start")
+	logger.Debug("Waiting for server to start")
 
 	// Try to connect to the server with a timeout
 	addr := listener.Addr().String()
@@ -169,7 +169,7 @@ func (c *Client) LaunchProgram(program string, args []string) error {
 				c.client = client
 				c.target = absPath
 				connected = true
-				logger.Printf("Successfully launched program: %s", program)
+				logger.Debug("Successfully launched program: %s", program)
 			} else {
 				// Failed, wait briefly and retry
 				time.Sleep(100 * time.Millisecond)
@@ -186,7 +186,7 @@ func (c *Client) AttachToProcess(pid int) error {
 		return fmt.Errorf("debug session already active")
 	}
 
-	logger.Printf("DEBUG: Starting AttachToProcess for PID %d", pid)
+	logger.Debug("Starting AttachToProcess for PID %d", pid)
 
 	// Get an available port for the debug server
 	port, err := getFreePort()
@@ -194,11 +194,11 @@ func (c *Client) AttachToProcess(pid int) error {
 		return fmt.Errorf("failed to find available port: %v", err)
 	}
 
-	logger.Printf("DEBUG: Setting up Delve logging")
+	logger.Debug("Setting up Delve logging")
 	// Configure Delve logging
 	logflags.Setup(false, "", "")
 
-	logger.Printf("DEBUG: Creating listener on port %d", port)
+	logger.Debug("Creating listener on port %d", port)
 	// Create a listener for the debug server
 	listener, err := net.Listen("tcp", fmt.Sprintf("localhost:%d", port))
 	if err != nil {
@@ -207,9 +207,9 @@ func (c *Client) AttachToProcess(pid int) error {
 
 	// Note: When attaching to an existing process, we can't easily redirect its stdout/stderr
 	// as those file descriptors are already connected. Output capture is limited for attach mode.
-	logger.Printf("DEBUG: Note: Output redirection is limited when attaching to an existing process")
+	logger.Debug("Note: Output redirection is limited when attaching to an existing process")
 
-	logger.Printf("DEBUG: Creating Delve config for attach")
+	logger.Debug("Creating Delve config for attach")
 	// Create Delve config for attaching to process
 	config := &service.Config{
 		Listener:    listener,
@@ -224,7 +224,7 @@ func (c *Client) AttachToProcess(pid int) error {
 		},
 	}
 
-	logger.Printf("DEBUG: Creating debug server")
+	logger.Debug("Creating debug server")
 	// Create and start the debugging server with attach to PID
 	server := rpccommon.NewServer(config)
 	if server == nil {
@@ -236,19 +236,19 @@ func (c *Client) AttachToProcess(pid int) error {
 	// Create a channel to signal when the server is ready or fails
 	serverReady := make(chan error, 1)
 
-	logger.Printf("DEBUG: Starting debug server in goroutine")
+	logger.Debug("Starting debug server in goroutine")
 	// Start server in a goroutine
 	go func() {
-		logger.Printf("DEBUG: Running server")
+		logger.Debug("Running server")
 		err := server.Run()
 		if err != nil {
-			logger.Printf("Debug server error: %v", err)
+			logger.Debug("Debug server error: %v", err)
 			serverReady <- err
 		}
-		logger.Printf("DEBUG: Server run completed")
+		logger.Debug("Server run completed")
 	}()
 
-	logger.Printf("DEBUG: Waiting for server to start")
+	logger.Debug("Waiting for server to start")
 
 	// Try to connect to the server with a timeout
 	addr := listener.Addr().String()
@@ -277,7 +277,7 @@ func (c *Client) AttachToProcess(pid int) error {
 				c.client = client
 				c.pid = pid
 				connected = true
-				logger.Printf("Successfully attached to process with PID: %d", pid)
+				logger.Debug("Successfully attached to process with PID: %d", pid)
 			} else {
 				// Failed, wait briefly and retry
 				time.Sleep(100 * time.Millisecond)
@@ -305,7 +305,7 @@ func (c *Client) SetBreakpoint(file string, line int) (*api.Breakpoint, error) {
 		return nil, fmt.Errorf("failed to set breakpoint: %v", err)
 	}
 
-	logger.Printf("Breakpoint set at %s:%d (ID: %d)", file, line, createdBp.ID)
+	logger.Debug("Breakpoint set at %s:%d (ID: %d)", file, line, createdBp.ID)
 	return createdBp, nil
 }
 
@@ -321,7 +321,7 @@ func (c *Client) ListBreakpoints() ([]*api.Breakpoint, error) {
 		return nil, fmt.Errorf("failed to list breakpoints: %v", err)
 	}
 
-	logger.Printf("Retrieved %d breakpoints", len(breakpoints))
+	logger.Debug("Retrieved %d breakpoints", len(breakpoints))
 	return breakpoints, nil
 }
 
@@ -337,7 +337,7 @@ func (c *Client) RemoveBreakpoint(id int) error {
 		return fmt.Errorf("failed to remove breakpoint with ID %d: %v", id, err)
 	}
 
-	logger.Printf("Removed breakpoint with ID %d at %s:%d", id, bp.File, bp.Line)
+	logger.Debug("Removed breakpoint with ID %d at %s:%d", id, bp.File, bp.Line)
 	return nil
 }
 
@@ -361,7 +361,7 @@ func (c *Client) Close() error {
 	go func() {
 		err := c.client.Detach(true)
 		if err != nil {
-			logger.Printf("Warning: Failed to detach from debugged process: %v", err)
+			logger.Debug("Warning: Failed to detach from debugged process: %v", err)
 		}
 		errChan <- err
 	}()
@@ -372,7 +372,7 @@ func (c *Client) Close() error {
 	case detachErr = <-errChan:
 		// Operation completed successfully
 	case <-ctx.Done():
-		logger.Printf("Warning: Detach operation timed out after 5 seconds")
+		logger.Debug("Warning: Detach operation timed out after 5 seconds")
 		detachErr = ctx.Err()
 	}
 
@@ -387,7 +387,7 @@ func (c *Client) Close() error {
 		go func() {
 			err := c.server.Stop()
 			if err != nil {
-				logger.Printf("Warning: Failed to stop debug server: %v", err)
+				logger.Debug("Warning: Failed to stop debug server: %v", err)
 			}
 			stopChan <- err
 		}()
@@ -397,7 +397,7 @@ func (c *Client) Close() error {
 		case <-stopChan:
 			// Operation completed
 		case <-time.After(5 * time.Second):
-			logger.Printf("Warning: Server stop operation timed out after 5 seconds")
+			logger.Debug("Warning: Server stop operation timed out after 5 seconds")
 		}
 
 		c.server = nil
@@ -408,7 +408,7 @@ func (c *Client) Close() error {
 
 	// Clean up the temporary directory if it exists
 	if c.tempDir != "" {
-		logger.Printf("DEBUG: Cleaning up temporary directory: %s", c.tempDir)
+		logger.Debug("Cleaning up temporary directory: %s", c.tempDir)
 		os.RemoveAll(c.tempDir)
 		c.tempDir = ""
 	}
@@ -448,7 +448,7 @@ func (c *Client) DebugSourceFile(sourceFile string, args []string) error {
 	// Build a temporary binary in the temp directory
 	outputBinary := filepath.Join(tempDir, "debug_binary")
 
-	logger.Printf("DEBUG: Compiling source file %s to %s", absPath, outputBinary)
+	logger.Debug("Compiling source file %s to %s", absPath, outputBinary)
 
 	// Create pipes for build output
 	buildStdoutReader, buildStdoutWriter, err := os.Pipe()
@@ -474,7 +474,7 @@ func (c *Client) DebugSourceFile(sourceFile string, args []string) error {
 	go func() {
 		scanner := bufio.NewScanner(buildStdoutReader)
 		for scanner.Scan() {
-			logger.Printf("Build output: %s", scanner.Text())
+			logger.Debug("Build output: %s", scanner.Text())
 		}
 	}()
 	
@@ -485,7 +485,7 @@ func (c *Client) DebugSourceFile(sourceFile string, args []string) error {
 	}
 
 	// Launch the compiled binary with the debugger
-	logger.Printf("DEBUG: Launching compiled binary with debugger")
+	logger.Debug("Launching compiled binary with debugger")
 	err = c.LaunchProgram(outputBinary, args)
 	if err != nil {
 		os.RemoveAll(tempDir) // Clean up temp directory on error
@@ -540,7 +540,7 @@ func (c *Client) Continue() error {
 		return fmt.Errorf("no active debug session")
 	}
 
-	logger.Println("DEBUG: Continuing execution")
+	logger.Debug("Continuing execution")
 
 	// Continue returns a channel that will receive state updates
 	stateChan := c.client.Continue()
@@ -548,7 +548,7 @@ func (c *Client) Continue() error {
 	// Wait for the state update from the channel
 	state := <-stateChan
 	if state.Exited {
-		logger.Println("DEBUG: Program has exited")
+		logger.Debug("Program has exited")
 		return nil
 	}
 
@@ -558,21 +558,21 @@ func (c *Client) Continue() error {
 
 	// Log information about the program state
 	if state.NextInProgress {
-		logger.Println("DEBUG: Step in progress")
+		logger.Debug("Step in progress")
 	} else if state.Running {
-		logger.Println("DEBUG: Program is running")
+		logger.Debug("Program is running")
 
 		// If program is still running, we need to wait for it to stop at a breakpoint
 		// or reach some other stopping condition
 		stoppedState, err := waitForStop(c, 5*time.Second)
 		if err != nil {
-			logger.Printf("DEBUG: Warning: %v", err)
+			logger.Debug("Warning: %v", err)
 		} else if stoppedState != nil {
-			logger.Printf("DEBUG: Program stopped at %s:%d",
+			logger.Debug("Program stopped at %s:%d",
 				stoppedState.CurrentThread.File, stoppedState.CurrentThread.Line)
 		}
 	} else {
-		logger.Printf("DEBUG: Program stopped at %s:%d", state.CurrentThread.File, state.CurrentThread.Line)
+		logger.Debug("Program stopped at %s:%d", state.CurrentThread.File, state.CurrentThread.Line)
 	}
 
 	return nil
@@ -612,7 +612,7 @@ func (c *Client) Step() error {
 	}
 
 	if state.Running {
-		logger.Println("DEBUG: Warning: Cannot step when program is running, waiting for program to stop")
+		logger.Debug("Warning: Cannot step when program is running, waiting for program to stop")
 		stoppedState, err := waitForStop(c, 2*time.Second)
 		if err != nil {
 			return fmt.Errorf("failed to wait for program to stop: %v", err)
@@ -620,7 +620,7 @@ func (c *Client) Step() error {
 		state = stoppedState
 	}
 
-	logger.Println("DEBUG: Stepping into")
+	logger.Debug("Stepping into")
 	nextState, err := c.client.Step()
 	if err != nil {
 		return fmt.Errorf("step into command failed: %v", err)
@@ -628,27 +628,27 @@ func (c *Client) Step() error {
 
 	// If state indicates step is in progress, wait for it to complete
 	if nextState.NextInProgress {
-		logger.Println("DEBUG: Step in progress, waiting for completion")
+		logger.Debug("Step in progress, waiting for completion")
 		completedState, err := waitForStop(c, 2*time.Second)
 		if err != nil {
-			logger.Printf("DEBUG: Warning: %v", err)
+			logger.Debug("Warning: %v", err)
 		} else if completedState != nil {
-			logger.Printf("DEBUG: Step completed, program stopped at %s:%d",
+			logger.Debug("Step completed, program stopped at %s:%d",
 				completedState.CurrentThread.File, completedState.CurrentThread.Line)
 		}
 	} else if nextState.Running {
-		logger.Println("DEBUG: Program still running after step, waiting for it to stop")
+		logger.Debug("Program still running after step, waiting for it to stop")
 		completedState, err := waitForStop(c, 2*time.Second)
 		if err != nil {
-			logger.Printf("DEBUG: Warning: %v", err)
+			logger.Debug("Warning: %v", err)
 		} else if completedState != nil {
-			logger.Printf("DEBUG: Program stopped at %s:%d",
+			logger.Debug("Program stopped at %s:%d",
 				completedState.CurrentThread.File, completedState.CurrentThread.Line)
 		}
 	} else if nextState.Exited {
-		logger.Println("DEBUG: Program has exited during step")
+		logger.Debug("Program has exited during step")
 	} else {
-		logger.Printf("DEBUG: Program stopped at %s:%d",
+		logger.Debug("Program stopped at %s:%d",
 			nextState.CurrentThread.File, nextState.CurrentThread.Line)
 	}
 
@@ -668,7 +668,7 @@ func (c *Client) StepOver() error {
 	}
 
 	if state.Running {
-		logger.Println("DEBUG: Warning: Cannot step when program is running, waiting for program to stop")
+		logger.Debug("Warning: Cannot step when program is running, waiting for program to stop")
 		stoppedState, err := waitForStop(c, 2*time.Second)
 		if err != nil {
 			return fmt.Errorf("failed to wait for program to stop: %v", err)
@@ -676,7 +676,7 @@ func (c *Client) StepOver() error {
 		state = stoppedState
 	}
 
-	logger.Println("DEBUG: Stepping over next line")
+	logger.Debug("Stepping over next line")
 	nextState, err := c.client.Next()
 	if err != nil {
 		return fmt.Errorf("step over command failed: %v", err)
@@ -684,27 +684,27 @@ func (c *Client) StepOver() error {
 
 	// If state indicates step is in progress, wait for it to complete
 	if nextState.NextInProgress {
-		logger.Println("DEBUG: Step in progress, waiting for completion")
+		logger.Debug("Step in progress, waiting for completion")
 		completedState, err := waitForStop(c, 2*time.Second)
 		if err != nil {
-			logger.Printf("DEBUG: Warning: %v", err)
+			logger.Debug("Warning: %v", err)
 		} else if completedState != nil {
-			logger.Printf("DEBUG: Step completed, program stopped at %s:%d",
+			logger.Debug("Step completed, program stopped at %s:%d",
 				completedState.CurrentThread.File, completedState.CurrentThread.Line)
 		}
 	} else if nextState.Running {
-		logger.Println("DEBUG: Program still running after step, waiting for it to stop")
+		logger.Debug("Program still running after step, waiting for it to stop")
 		completedState, err := waitForStop(c, 2*time.Second)
 		if err != nil {
-			logger.Printf("DEBUG: Warning: %v", err)
+			logger.Debug("Warning: %v", err)
 		} else if completedState != nil {
-			logger.Printf("DEBUG: Program stopped at %s:%d",
+			logger.Debug("Program stopped at %s:%d",
 				completedState.CurrentThread.File, completedState.CurrentThread.Line)
 		}
 	} else if nextState.Exited {
-		logger.Println("DEBUG: Program has exited during step")
+		logger.Debug("Program has exited during step")
 	} else {
-		logger.Printf("DEBUG: Program stopped at %s:%d",
+		logger.Debug("Program stopped at %s:%d",
 			nextState.CurrentThread.File, nextState.CurrentThread.Line)
 	}
 
@@ -724,7 +724,7 @@ func (c *Client) StepOut() error {
 	}
 
 	if state.Running {
-		logger.Println("DEBUG: Warning: Cannot step out when program is running, waiting for program to stop")
+		logger.Debug("Warning: Cannot step out when program is running, waiting for program to stop")
 		stoppedState, err := waitForStop(c, 2*time.Second)
 		if err != nil {
 			return fmt.Errorf("failed to wait for program to stop: %v", err)
@@ -732,7 +732,7 @@ func (c *Client) StepOut() error {
 		state = stoppedState
 	}
 
-	logger.Println("DEBUG: Stepping out")
+	logger.Debug("Stepping out")
 	nextState, err := c.client.StepOut()
 	if err != nil {
 		return fmt.Errorf("step out command failed: %v", err)
@@ -740,27 +740,27 @@ func (c *Client) StepOut() error {
 
 	// If state indicates step is in progress, wait for it to complete
 	if nextState.NextInProgress {
-		logger.Println("DEBUG: Step out in progress, waiting for completion")
+		logger.Debug("Step out in progress, waiting for completion")
 		completedState, err := waitForStop(c, 2*time.Second)
 		if err != nil {
-			logger.Printf("DEBUG: Warning: %v", err)
+			logger.Debug("Warning: %v", err)
 		} else if completedState != nil {
-			logger.Printf("DEBUG: Step out completed, program stopped at %s:%d",
+			logger.Debug("Step out completed, program stopped at %s:%d",
 				completedState.CurrentThread.File, completedState.CurrentThread.Line)
 		}
 	} else if nextState.Running {
-		logger.Println("DEBUG: Program still running after step out, waiting for it to stop")
+		logger.Debug("Program still running after step out, waiting for it to stop")
 		completedState, err := waitForStop(c, 2*time.Second)
 		if err != nil {
-			logger.Printf("DEBUG: Warning: %v", err)
+			logger.Debug("Warning: %v", err)
 		} else if completedState != nil {
-			logger.Printf("DEBUG: Program stopped at %s:%d",
+			logger.Debug("Program stopped at %s:%d",
 				completedState.CurrentThread.File, completedState.CurrentThread.Line)
 		}
 	} else if nextState.Exited {
-		logger.Println("DEBUG: Program has exited during step out")
+		logger.Debug("Program has exited during step out")
 	} else {
-		logger.Printf("DEBUG: Program stopped at %s:%d",
+		logger.Debug("Program stopped at %s:%d",
 			nextState.CurrentThread.File, nextState.CurrentThread.Line)
 	}
 
@@ -784,7 +784,7 @@ func (c *Client) ExamineVariable(name string, depth int) (*VariableInfo, error) 
 		return nil, fmt.Errorf("no active debug session")
 	}
 
-	logger.Printf("DEBUG: Examining variable '%s' with depth %d", name, depth)
+	logger.Debug("Examining variable '%s' with depth %d", name, depth)
 
 	// GetState to get current goroutine and ensure we're stopped
 	state, err := c.client.GetState()
@@ -794,7 +794,7 @@ func (c *Client) ExamineVariable(name string, depth int) (*VariableInfo, error) 
 
 	// Check if program is still running - can't examine variables while running
 	if state.Running {
-		logger.Printf("DEBUG: Warning: Cannot examine variables while program is running, waiting for program to stop")
+		logger.Debug("Warning: Cannot examine variables while program is running, waiting for program to stop")
 		stoppedState, err := waitForStop(c, 2*time.Second)
 		if err != nil {
 			return nil, fmt.Errorf("failed to wait for program to stop: %v", err)
@@ -811,7 +811,7 @@ func (c *Client) ExamineVariable(name string, depth int) (*VariableInfo, error) 
 	goroutineID := state.CurrentThread.GoroutineID
 
 	// Log current position to help with debugging
-	logger.Printf("DEBUG: Current position for variable evaluation: %s:%d",
+	logger.Debug("Current position for variable evaluation: %s:%d",
 		state.CurrentThread.File, state.CurrentThread.Line)
 
 	// Evaluate the variable
@@ -874,7 +874,7 @@ func (c *Client) ListScopeVariables(depth int) (*ScopeVariables, error) {
 		return nil, fmt.Errorf("no active debug session")
 	}
 
-	logger.Printf("DEBUG: Listing all scope variables with depth %d", depth)
+	logger.Debug("Listing all scope variables with depth %d", depth)
 
 	// GetState to get current goroutine and ensure we're stopped
 	state, err := c.client.GetState()
@@ -884,7 +884,7 @@ func (c *Client) ListScopeVariables(depth int) (*ScopeVariables, error) {
 
 	// Check if program is still running - can't examine variables while running
 	if state.Running {
-		logger.Printf("DEBUG: Warning: Cannot examine variables while program is running, waiting for program to stop")
+		logger.Debug("Warning: Cannot examine variables while program is running, waiting for program to stop")
 		stoppedState, err := waitForStop(c, 2*time.Second)
 		if err != nil {
 			return nil, fmt.Errorf("failed to wait for program to stop: %v", err)
@@ -916,14 +916,14 @@ func (c *Client) ListScopeVariables(depth int) (*ScopeVariables, error) {
 	}
 
 	// Get local variables
-	logger.Printf("DEBUG: Getting local variables")
+	logger.Debug("Getting local variables")
 	localVars, err := c.client.ListLocalVariables(scope, loadConfig)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list local variables: %v", err)
 	}
 
 	// Get function arguments
-	logger.Printf("DEBUG: Getting function arguments")
+	logger.Debug("Getting function arguments")
 	args, err := c.client.ListFunctionArgs(scope, loadConfig)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list function arguments: %v", err)
@@ -987,7 +987,7 @@ func (c *Client) GetExecutionPosition() (*ExecutionPosition, error) {
 		return nil, fmt.Errorf("no active debug session")
 	}
 
-	logger.Printf("DEBUG: Getting current execution position")
+	logger.Debug("Getting current execution position")
 
 	state, err := c.client.GetState()
 	if err != nil {
@@ -1001,13 +1001,13 @@ func (c *Client) GetExecutionPosition() (*ExecutionPosition, error) {
 
 	// If the program is running, we can't get the current line
 	if state.Running {
-		logger.Printf("DEBUG: Program is running, can't get current line")
+		logger.Debug("Program is running, can't get current line")
 		return result, nil
 	}
 
 	// If the program has exited, we can't get the current line
 	if state.Exited {
-		logger.Printf("DEBUG: Program has exited, can't get current line")
+		logger.Debug("Program has exited, can't get current line")
 		return result, nil
 	}
 
@@ -1020,7 +1020,7 @@ func (c *Client) GetExecutionPosition() (*ExecutionPosition, error) {
 
 		// Add return values if available
 		if len(state.CurrentThread.ReturnValues) > 0 {
-			logger.Printf("DEBUG: Found %d return values", len(state.CurrentThread.ReturnValues))
+			logger.Debug("Found %d return values", len(state.CurrentThread.ReturnValues))
 
 			// Convert to our VariableInfo format
 			returnValues := make([]VariableInfo, 0, len(state.CurrentThread.ReturnValues))
@@ -1036,7 +1036,7 @@ func (c *Client) GetExecutionPosition() (*ExecutionPosition, error) {
 		}
 	}
 
-	logger.Printf("DEBUG: Current execution position: %s:%d in function %s (goroutine %d)",
+	logger.Debug("Current execution position: %s:%d in function %s (goroutine %d)",
 		result.File, result.Line, result.Function, result.GoroutineID)
 
 	return result, nil
