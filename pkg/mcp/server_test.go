@@ -29,21 +29,21 @@ func getTextContent(result *mcp.CallToolResult) string {
 }
 
 // Helper function to find the line number for a specific statement in a file
-func findLineNumber(filePath, targetStatement string) (int, error) {
+func findLineNumber(filePath, targetStatement string) int {
 	content, err := os.ReadFile(filePath)
 	if err != nil {
-		return 0, fmt.Errorf("failed to read file: %v", err)
+		panic(fmt.Sprintf("failed to read file: %v", err))
 	}
 
 	lines := strings.Split(string(content), "\n")
 	for i, line := range lines {
 		line = strings.TrimSpace(line)
 		if strings.Contains(line, targetStatement) {
-			return i + 1, nil // Line numbers are 1-indexed
+			return i + 1 // Line numbers are 1-indexed
 		}
 	}
 
-	return 0, fmt.Errorf("statement not found: %s", targetStatement)
+	panic(fmt.Sprintf("statement not found: %s", targetStatement))
 }
 
 func TestDebugWorkflow(t *testing.T) {
@@ -89,30 +89,18 @@ func TestDebugWorkflow(t *testing.T) {
 	time.Sleep(200 * time.Millisecond)
 
 	// Find line numbers for key statements
-	fmtPrintlnLine, err := findLineNumber(testFile, "fmt.Println(\"Starting debug test program\")")
-	if err != nil {
-		t.Fatalf("Failed to find line number for fmt.Println statement: %v", err)
-	}
+	fmtPrintlnLine := findLineNumber(testFile, "fmt.Println(\"Starting debug test program\")")
 	t.Logf("Found fmt.Println statement at line %d", fmtPrintlnLine)
 
-	countVarLine, err := findLineNumber(testFile, "count := 10")
-	if err != nil {
-		t.Fatalf("Failed to find line number for count variable: %v", err)
-	}
+	countVarLine := findLineNumber(testFile, "count := 10")
 	t.Logf("Found count variable at line %d", countVarLine)
 
 	// Find the calculate function line
-	calculateLine, err := findLineNumber(testFile, "func calculate(n int) int {")
-	if err != nil {
-		t.Fatalf("Failed to find calculate function: %v", err)
-	}
+	calculateLine := findLineNumber(testFile, "func calculate(n int) int {")
 	t.Logf("Found calculate function at line %d", calculateLine)
 
 	// Find the line with a := n * 2 inside calculate
-	aVarLine, err := findLineNumber(testFile, "a := n * 2")
-	if err != nil {
-		t.Fatalf("Failed to find a variable assignment: %v", err)
-	}
+	aVarLine := findLineNumber(testFile, "a := n * 2")
 	t.Logf("Found a variable assignment at line %d", aVarLine)
 
 	// Step 2: Set a breakpoint at the start of calculate function
@@ -591,15 +579,9 @@ func TestDebugSingleTest(t *testing.T) {
 	}
 
 	// Find line number for the test function and the Add call
-	testFuncLine, err := findLineNumber(testFilePath, "func TestAdd(t *testing.T) {")
-	if err != nil {
-		t.Fatalf("Failed to find line number for TestAdd function: %v", err)
-	}
+	testFuncLine := findLineNumber(testFilePath, "func TestAdd(t *testing.T) {")
 	
-	addCallLine, err := findLineNumber(testFilePath, "result := Add(2, 3)")
-	if err != nil {
-		t.Fatalf("Failed to find line number for Add call: %v", err)
-	}
+	addCallLine := findLineNumber(testFilePath, "result := Add(2, 3)")
 	
 	t.Logf("Found TestAdd function at line %d, Add call at line %d", testFuncLine, addCallLine)
 
