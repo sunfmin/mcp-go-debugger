@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"time"
 
 	"github.com/go-delve/delve/pkg/logflags"
@@ -463,7 +464,7 @@ func (c *Client) DebugSourceFile(sourceFile string, args []string) error {
 	buildCmd := exec.Command("go", "build", "-gcflags", "all=-N -l", "-o", outputBinary, absPath)
 	buildCmd.Stdout = buildStdoutWriter
 	buildCmd.Stderr = buildStdoutWriter
-	
+
 	err = buildCmd.Start()
 	if err != nil {
 		os.RemoveAll(tempDir)
@@ -477,7 +478,7 @@ func (c *Client) DebugSourceFile(sourceFile string, args []string) error {
 			logger.Debug("Build output: %s", scanner.Text())
 		}
 	}()
-	
+
 	err = buildCmd.Wait()
 	if err != nil {
 		os.RemoveAll(tempDir)
@@ -843,7 +844,7 @@ func convertVariableToInfo(v *api.Variable, depth int) *VariableInfo {
 		Type:    v.Type,
 		Value:   v.Value,
 		Address: v.Addr,
-		Kind:    string(v.Kind),
+		Kind:    strconv.Itoa(int(v.Kind)),
 		Length:  v.Len,
 	}
 
@@ -1045,7 +1046,7 @@ func (c *Client) GetExecutionPosition() (*ExecutionPosition, error) {
 // captureOutput reads from a reader and sends the output to the output channel
 func (c *Client) captureOutput(reader io.ReadCloser, source string) {
 	defer reader.Close()
-	
+
 	scanner := bufio.NewScanner(reader)
 	for scanner.Scan() {
 		select {
@@ -1074,7 +1075,7 @@ func (c *Client) GetCapturedOutput() *OutputMessage {
 // GetAllCapturedOutput returns all currently available captured output messages
 func (c *Client) GetAllCapturedOutput() []OutputMessage {
 	var messages []OutputMessage
-	
+
 	// Non-blocking read of up to 100 messages
 	// This prevents clearing the entire channel while still returning available messages
 	for i := 0; i < 100; i++ {
@@ -1090,6 +1091,6 @@ func (c *Client) GetAllCapturedOutput() []OutputMessage {
 			return messages
 		}
 	}
-	
+
 	return messages
 }
