@@ -25,6 +25,7 @@ MCP Go Debugger is a Model Context Protocol (MCP) server that integrates the Del
 - Launch Go programs directly from the MCP with debug capabilities enabled
 - Attach to running Go processes that support debugging
 - Debug a Go source file directly (similar to `dlv debug`) by compiling and debugging it
+- Debug a single Go test function directly by compiling and running the test with the debugger
 - Manage the entire debugging lifecycle within a single MCP process
 - Display connection status and information
 
@@ -128,6 +129,15 @@ User: "Can you debug this main.go file for me?"
 AI: "I'll debug your source file directly."
 [AI uses MCP Go Debugger to compile and debug the file]
 "I've compiled and started debugging main.go. Let me set a breakpoint in the main function to examine how the program executes."
+```
+
+#### Example 5: Debugging a Single Test
+
+```
+User: "I need to debug the TestCalculateTotal function in my order_test.go file."
+AI: "I'll help you debug that specific test function."
+[AI uses MCP Go Debugger to compile and debug the test]
+"I've compiled and started debugging the TestCalculateTotal test function. Let me set a breakpoint at the beginning of the test to see how it executes."
 ```
 
 ## Implementation Plan
@@ -336,6 +346,7 @@ Exposed MCP commands:
 - `launch`: Launch a Go program with debugging enabled
 - `attach`: Attach to a running Go process
 - `debug`: Compile and debug a Go source file directly
+- `debug_single_test`: Compile and debug a single Go test function
 - `set_breakpoint`: Set a breakpoint at a specific location
 - `list_breakpoints`: List all active breakpoints
 - `remove_breakpoint`: Remove a specific breakpoint

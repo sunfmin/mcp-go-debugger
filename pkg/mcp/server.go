@@ -101,6 +101,7 @@ func (s *MCPDebugServer) registerTools() {
 	s.addListBreakpointsTool()
 	s.addRemoveBreakpointTool()
 	s.addDebugSourceFileTool()
+	s.addDebugSingleTestTool()
 	s.addContinueTool()
 	s.addStepTool()
 	s.addStepOverTool()
@@ -220,6 +221,26 @@ func (s *MCPDebugServer) addDebugSourceFileTool() {
 	)
 	
 	s.server.AddTool(debugTool, s.DebugSourceFile)
+}
+
+// addDebugSingleTestTool adds a tool for debugging a single Go test function
+func (s *MCPDebugServer) addDebugSingleTestTool() {
+	debugSingleTestTool := mcp.NewTool("debug_single_test",
+		mcp.WithDescription("Debug a single Go test function"),
+		mcp.WithString("testfile",
+			mcp.Required(),
+			mcp.Description("Path to the test file"),
+		),
+		mcp.WithString("testname",
+			mcp.Required(),
+			mcp.Description("Name of the test function to debug"),
+		),
+		mcp.WithArray("testflags",
+			mcp.Description("Optional flags to pass to go test"),
+		),
+	)
+
+	s.server.AddTool(debugSingleTestTool, s.DebugSingleTest)
 }
 
 // addContinueTool adds the continue_execution tool
@@ -743,4 +764,59 @@ func (s *MCPDebugServer) GetDebuggerOutput(ctx context.Context, req mcp.CallTool
 	
 	// Return the output
 	return mcp.NewToolResultText(string(outputJSON)), nil
+}
+
+// DebugSingleTest compiles and debugs a single Go test function
+func (s *MCPDebugServer) DebugSingleTest(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	logger.Debug("Received debug_single_test request")
+
+	// Create client if needed
+	if s.debugClient == nil {
+		s.debugClient = debugger.NewClient()
+	}
+
+	// Check if already debugging
+	if s.debugClient.IsConnected() {
+		return newErrorResult("Debugger is already connected. Close the current session first."), nil
+	}
+
+	// Get parameters from the arguments map directly
+	args := request.Params.Arguments
+
+	testFile, ok := args["testfile"].(string)
+	if !ok || testFile == "" {
+		return newErrorResult("Missing required parameter: testfile"), nil
+	}
+
+	testName, ok := args["testname"].(string)
+	if !ok || testName == "" {
+		return newErrorResult("Missing required parameter: testname"), nil
+	}
+
+	// Get optional testflags
+	var testFlags []string
+	if testFlagsIf, ok := args["testflags"]; ok {
+		testFlagsArray, ok := testFlagsIf.([]interface{})
+		if ok {
+			for _, flag := range testFlagsArray {
+				if flagStr, ok := flag.(string); ok {
+					testFlags = append(testFlags, flagStr)
+				}
+			}
+		}
+	}
+
+	// Debug the test
+	err := s.debugClient.DebugSingleTest(testFile, testName, testFlags)
+	if err != nil {
+		return newErrorResult("Failed to debug test: %v", err), nil
+	}
+
+	response := fmt.Sprintf("Successfully launched debugger for test %s in %s", testName, testFile)
+	
+	return &mcp.CallToolResult{
+		Content: []mcp.Content{
+			mcp.NewTextContent(response),
+		},
+	}, nil
 } 

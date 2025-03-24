@@ -8,6 +8,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
+	"strings"
 	"time"
 
 	"github.com/go-delve/delve/pkg/logflags"
@@ -406,5 +408,117 @@ func (c *Client) DebugSourceFile(sourceFile string, args []string) error {
 		return fmt.Errorf("failed to launch debugger: %v", err)
 	}
 
+	return nil
+}
+
+// DebugSingleTest compiles and debugs a single Go test function
+func (c *Client) DebugSingleTest(testFilePath string, testName string, testFlags []string) error {
+	if c.client != nil {
+		return fmt.Errorf("debug session already active")
+	}
+
+	// Ensure test file exists
+	absPath, err := filepath.Abs(testFilePath)
+	if err != nil {
+		return fmt.Errorf("failed to get absolute path: %v", err)
+	}
+
+	if _, err := os.Stat(absPath); os.IsNotExist(err) {
+		return fmt.Errorf("test file not found: %s", absPath)
+	}
+
+	// Create a temporary directory for compilation
+	tempDir, err := os.MkdirTemp("", "mcp-go-debugger-*")
+	if err != nil {
+		return fmt.Errorf("failed to create temp directory: %v", err)
+	}
+	c.tempDir = tempDir
+	// We'll clean this up when the debug session ends
+
+	// Get the directory of the test file - we'll compile from here
+	testDir := filepath.Dir(absPath)
+	logger.Debug("Test directory: %s", testDir)
+
+	// Create a name for the test binary
+	outputBinary := filepath.Join(tempDir, "test_binary")
+
+	logger.Debug("Compiling package in %s to %s", testDir, outputBinary)
+
+	// Create pipes for build output
+	buildStdoutReader, buildStdoutWriter, err := os.Pipe()
+	if err != nil {
+		os.RemoveAll(tempDir)
+		return fmt.Errorf("failed to create stdout pipe: %v", err)
+	}
+	defer buildStdoutReader.Close()
+	defer buildStdoutWriter.Close()
+
+	// Run go test with -c flag to compile the test binary but not run it
+	// -o specifies the output file, but we don't specify a specific test file
+	// Instead, we compile the whole package from the test directory
+	buildCmd := exec.Command("go", "test", "-c", "-o", outputBinary)
+	buildCmd.Dir = testDir // Set working directory to the test directory
+	buildCmd.Stdout = buildStdoutWriter
+	buildCmd.Stderr = buildStdoutWriter
+
+	logger.Debug("Running build command: %v in %s", buildCmd.Args, buildCmd.Dir)
+	err = buildCmd.Start()
+	if err != nil {
+		os.RemoveAll(tempDir)
+		return fmt.Errorf("failed to start test compilation: %v", err)
+	}
+
+	// Capture build output
+	var buildOutput strings.Builder
+	go func() {
+		scanner := bufio.NewScanner(buildStdoutReader)
+		for scanner.Scan() {
+			line := scanner.Text()
+			buildOutput.WriteString(line + "\n")
+			logger.Debug("Build output: %s", line)
+		}
+	}()
+
+	err = buildCmd.Wait()
+	if err != nil {
+		logger.Debug("Compilation failed: %v\nOutput: %s", err, buildOutput.String())
+		os.RemoveAll(tempDir)
+		return fmt.Errorf("failed to compile test file: %v", err)
+	}
+
+	// Verify the binary was created
+	if _, err := os.Stat(outputBinary); os.IsNotExist(err) {
+		logger.Debug("Output binary not found at %s after compilation", outputBinary)
+		os.RemoveAll(tempDir)
+		return fmt.Errorf("compilation completed but binary not found")
+	}
+
+	logger.Debug("Successfully compiled test binary: %s", outputBinary)
+
+	// Create args to run the specific test
+	args := []string{
+		"-test.v", // Verbose output
+	}
+
+	// Add specific test pattern if provided
+	if testName != "" {
+		// Escape special regex characters in the test name
+		escapedTestName := regexp.QuoteMeta(testName)
+		// Create a test pattern that matches exactly the provided test name
+		args = append(args, fmt.Sprintf("-test.run=^%s$", escapedTestName))
+	}
+
+	// Add any additional test flags
+	args = append(args, testFlags...)
+
+	logger.Debug("Launching test binary with debugger, test name: %s, args: %v", testName, args)
+	// Launch the compiled test binary with the debugger
+	err = c.LaunchProgram(outputBinary, args)
+	if err != nil {
+		os.RemoveAll(tempDir) // Clean up temp directory on error
+		return fmt.Errorf("failed to launch debugger: %v", err)
+	}
+
+	logger.Debug("Successfully started debugging test %s in file %s", testName, testFilePath)
 	return nil
 } 

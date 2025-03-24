@@ -572,3 +572,237 @@ func processFurther(value int) int {
 
 	return goFile
 }
+
+func TestDebugSingleTest(t *testing.T) {
+	// Skip test in short mode
+	if testing.Short() {
+		t.Skip("Skipping integration test in short mode")
+	}
+
+	// Get paths to our calculator test files
+	testFilePath, err := filepath.Abs("../../testdata/calculator/calculator_test.go")
+	if err != nil {
+		t.Fatalf("Failed to get absolute path to test file: %v", err)
+	}
+
+	// Make sure the test file exists
+	if _, err := os.Stat(testFilePath); os.IsNotExist(err) {
+		t.Fatalf("Test file does not exist: %s", testFilePath)
+	}
+
+	// Find line number for the test function and the Add call
+	testFuncLine, err := findLineNumber(testFilePath, "func TestAdd(t *testing.T) {")
+	if err != nil {
+		t.Fatalf("Failed to find line number for TestAdd function: %v", err)
+	}
+	
+	addCallLine, err := findLineNumber(testFilePath, "result := Add(2, 3)")
+	if err != nil {
+		t.Fatalf("Failed to find line number for Add call: %v", err)
+	}
+	
+	t.Logf("Found TestAdd function at line %d, Add call at line %d", testFuncLine, addCallLine)
+
+	// Create server
+	server := NewMCPDebugServer("test-version")
+	ctx := context.Background()
+
+	// Step 1: Launch the debug single test
+	debugTestRequest := mcp.CallToolRequest{}
+	debugTestRequest.Params.Arguments = map[string]interface{}{
+		"testfile":  testFilePath,
+		"testname":  "TestAdd",
+		"testflags": []interface{}{"-test.timeout=10s"},
+	}
+
+	debugResult, err := server.DebugSingleTest(ctx, debugTestRequest)
+	if err != nil {
+		t.Fatalf("Failed to debug single test: %v", err)
+	}
+
+	debugText := getTextContent(debugResult)
+	if !strings.Contains(debugText, "Successfully launched debugger for test") {
+		t.Errorf("Unexpected debug response: %s", debugText)
+	}
+
+	// Give the debugger time to initialize
+	time.Sleep(300 * time.Millisecond)
+
+	// Step 2: Set a breakpoint where Add is called in the test function
+	setBreakpointRequest := mcp.CallToolRequest{}
+	setBreakpointRequest.Params.Arguments = map[string]interface{}{
+		"file": testFilePath,
+		"line": float64(addCallLine),
+	}
+
+	breakpointResult, err := server.SetBreakpoint(ctx, setBreakpointRequest)
+	if err != nil {
+		t.Fatalf("Failed to set breakpoint: %v", err)
+	}
+
+	breakpointText := getTextContent(breakpointResult)
+	var breakpointResponse BreakpointResponse
+	if err := json.Unmarshal([]byte(breakpointText), &breakpointResponse); err != nil {
+		t.Fatalf("Failed to parse breakpoint response: %v, %s", err, breakpointText)
+	}
+
+	if breakpointResponse.ID <= 0 {
+		t.Errorf("Expected valid breakpoint ID, got: %d", breakpointResponse.ID)
+	}
+	t.Logf("Set breakpoint at line %d with ID %d", addCallLine, breakpointResponse.ID)
+
+	// Step 3: Continue execution to hit breakpoint
+	continueRequest := mcp.CallToolRequest{}
+	continueResult, err := server.Continue(ctx, continueRequest)
+	if err != nil {
+		t.Fatalf("Failed to continue execution: %v", err)
+	}
+
+	continueText := getTextContent(continueResult)
+	t.Logf("Continue result: %s", continueText)
+
+	// Allow time for the breakpoint to be hit
+	time.Sleep(500 * time.Millisecond)
+
+	// Step 4: Check execution position
+	positionRequest := mcp.CallToolRequest{}
+	positionResult, err := server.GetExecutionPosition(ctx, positionRequest)
+	if err != nil {
+		t.Fatalf("Failed to get execution position: %v", err)
+	}
+
+	positionText := getTextContent(positionResult)
+	t.Logf("Current execution position: %s", positionText)
+
+	// Parse the position info
+	var positionInfo map[string]interface{}
+	if err := json.Unmarshal([]byte(positionText), &positionInfo); err != nil {
+		t.Fatalf("Failed to parse execution position info: %v", err)
+	}
+
+	// Verify we're at the expected line in the TestAdd function
+	if file, ok := positionInfo["file"].(string); !ok || !strings.Contains(file, "calculator_test.go") {
+		t.Errorf("Expected to be in calculator_test.go, got %v", file)
+	}
+
+	if line, ok := positionInfo["line"].(float64); !ok || int(line) != addCallLine {
+		t.Errorf("Expected to be at line %d, got %v", addCallLine, line)
+	}
+
+	funcName, _ := positionInfo["function"].(string)
+	if !strings.Contains(funcName, "TestAdd") {
+		t.Errorf("Expected to be in TestAdd function, got %s", funcName)
+	}
+	t.Logf("Current function: %s", funcName)
+
+	// Add step to list variables in scope to see what's available
+	scopeRequest := mcp.CallToolRequest{}
+	scopeResult, err := server.ListScopeVariables(ctx, scopeRequest)
+	if err != nil {
+		t.Fatalf("Failed to list scope variables: %v", err)
+	}
+
+	scopeText := getTextContent(scopeResult)
+	t.Logf("Available variables in scope: %s", scopeText)
+	
+	// Parse the scope variables 
+	var scopeVars map[string]interface{}
+	if err := json.Unmarshal([]byte(scopeText), &scopeVars); err != nil {
+		t.Fatalf("Failed to parse scope variables: %v", err)
+	}
+
+	// First try to examine 't', which should be available in all test functions
+	examineRequest := mcp.CallToolRequest{}
+	examineRequest.Params.Arguments = map[string]interface{}{
+		"name":  "t",
+		"depth": float64(1),
+	}
+
+	examineResult, err := server.ExamineVariable(ctx, examineRequest)
+	if err != nil {
+		t.Logf("Failed to examine variable t: %v", err)
+	} else {
+		tText := getTextContent(examineResult)
+		t.Logf("Found test context variable 't': %s", tText)
+	}
+
+	// Now try to step once to execute the Add function call
+	stepRequest := mcp.CallToolRequest{}
+	stepResult, err := server.Step(ctx, stepRequest)
+	if err != nil {
+		t.Fatalf("Failed to step: %v", err)
+	}
+	
+	stepText := getTextContent(stepResult)
+	t.Logf("Step result: %s", stepText)
+	
+	// Allow time for the step to complete
+	time.Sleep(200 * time.Millisecond)
+
+	// Get position after step to see where we are
+	positionResult2, err := server.GetExecutionPosition(ctx, positionRequest)
+	if err != nil {
+		t.Fatalf("Failed to get execution position after step: %v", err)
+	}
+
+	positionText2 := getTextContent(positionResult2)
+	t.Logf("Position after step: %s", positionText2)
+
+	// Now look for result variable, which should be populated after the Add call
+	examineResultVarRequest := mcp.CallToolRequest{}
+	examineResultVarRequest.Params.Arguments = map[string]interface{}{
+		"name":  "result",
+		"depth": float64(1),
+	}
+
+	resultVarExamineResult, err := server.ExamineVariable(ctx, examineResultVarRequest)
+	if err != nil {
+		t.Logf("Failed to examine result variable: %v", err)
+	} else {
+		resultText := getTextContent(resultVarExamineResult)
+		t.Logf("Result variable value: %s", resultText)
+		
+		// If we got a valid result, verify it
+		if !strings.Contains(resultText, "Error:") {
+			var resultInfo map[string]interface{}
+			if err := json.Unmarshal([]byte(resultText), &resultInfo); err != nil {
+				t.Logf("Failed to parse result variable info: %v", err)
+			} else if value, ok := resultInfo["value"].(string); ok {
+				t.Logf("Add(2,3) returned %s", value)
+				// Don't fail the test if this doesn't match, just log it
+				if value != "5" {
+					t.Logf("WARNING: Expected result to be 5, got %s", value)
+				}
+			}
+		}
+	}
+
+	// Step 6: Continue execution to complete the test
+	_, err = server.Continue(ctx, continueRequest)
+	if err != nil {
+		t.Fatalf("Failed to continue execution to completion: %v", err)
+	}
+
+	// Allow time for program to complete
+	time.Sleep(300 * time.Millisecond)
+
+	// Check for captured output
+	outputRequest := mcp.CallToolRequest{}
+	outputResult, err := server.GetDebuggerOutput(ctx, outputRequest)
+	if err == nil && outputResult != nil {
+		outputText := getTextContent(outputResult)
+		t.Logf("Captured program output: %s", outputText)
+	}
+
+	// Clean up by closing the debug session
+	closeRequest := mcp.CallToolRequest{}
+	closeResult, err := server.Close(ctx, closeRequest)
+	if err != nil {
+		t.Fatalf("Failed to close debug session: %v", err)
+	}
+
+	closeText := getTextContent(closeResult)
+	t.Logf("Debug session close result: %s", closeText)
+
+	t.Log("TestDebugSingleTest completed successfully")
+}

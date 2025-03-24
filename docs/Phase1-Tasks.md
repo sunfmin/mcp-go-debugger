@@ -43,6 +43,7 @@ This document outlines the detailed tasks for implementing Phase 1 (Core Functio
 ### 4. Program Launch and Attach
 
 - [ ] **4.7** [P1] Implement "debug" tool to compile and debug a source file directly *(depends on: 3.1-3.5)*
+- [ ] **4.8** [P1] Implement "debug_single_test" tool to compile and debug a single test function *(depends on: 3.1-3.5)*
 - [x] **4.1** [P0] Implement "launch" tool to start a program with debugging *(depends on: 3.1-3.5)*
 - [x] **4.2** [P0] Add support for program arguments and environment variables *(depends on: 4.1)*
 - [x] **4.3** [P0] Implement "attach" tool to connect to running process *(depends on: 3.1-3.5)*
