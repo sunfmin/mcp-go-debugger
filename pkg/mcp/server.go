@@ -455,12 +455,7 @@ func (s *MCPDebugServer) Continue(ctx context.Context, request mcp.CallToolReque
 		return newErrorResult("no active debug session, please launch or attach first"), nil
 	}
 
-	state, err := s.debugClient.Continue()
-	if err != nil {
-		logger.Error("Failed to continue execution", "error", err)
-		return newErrorResult("failed to continue execution: %v", err), nil
-	}
-
+	state := s.debugClient.Continue()
 	return newToolResultJSON(state)
 }
 
@@ -472,11 +467,7 @@ func (s *MCPDebugServer) Step(ctx context.Context, request mcp.CallToolRequest) 
 		return newErrorResult("no active debug session, please launch or attach first"), nil
 	}
 
-	state, err := s.debugClient.Step()
-	if err != nil {
-		logger.Error("Failed to step", "error", err)
-		return newErrorResult("failed to step: %v", err), nil
-	}
+	state := s.debugClient.Step()
 
 	return newToolResultJSON(state)
 }
@@ -489,11 +480,7 @@ func (s *MCPDebugServer) StepOver(ctx context.Context, request mcp.CallToolReque
 		return newErrorResult("no active debug session, please launch or attach first"), nil
 	}
 
-	state, err := s.debugClient.StepOver()
-	if err != nil {
-		logger.Error("Failed to step over", "error", err)
-		return newErrorResult("failed to step over: %v", err), nil
-	}
+	state := s.debugClient.StepOver()
 
 	return newToolResultJSON(state)
 }
@@ -506,12 +493,7 @@ func (s *MCPDebugServer) StepOut(ctx context.Context, request mcp.CallToolReques
 		return newErrorResult("no active debug session, please launch or attach first"), nil
 	}
 
-	state, err := s.debugClient.StepOut()
-	if err != nil {
-		logger.Error("Failed to step out", "error", err)
-		return newErrorResult("failed to step out: %v", err), nil
-	}
-
+	state := s.debugClient.StepOut()
 	return newToolResultJSON(state)
 }
 

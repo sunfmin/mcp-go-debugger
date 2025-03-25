@@ -184,16 +184,23 @@ func generateStateSummary(state *types.DebuggerState) string {
 
 // createDebugContext creates a DebugContext from a DebuggerState
 func createDebugContext(state *types.DebuggerState) types.DebugContext {
-	return types.DebugContext{
-		DelveState:      state.DelveState,
-		CurrentPosition: getCurrentPosition(state),
-		Timestamp:      time.Now(),
-		LastOperation:  "",  // Will be set by the caller
-		StopReason:     state.StateReason,
-		Threads:        convertThreads(state.Threads),
-		Goroutine:      state.SelectedGoroutine,
-		OperationSummary: state.Summary,
+	context := types.DebugContext{
+		Timestamp: time.Now(),
 	}
+
+	if state == nil {
+		context.OperationSummary = "debugger state unknown"
+		return context
+	}
+
+	context.DelveState = state.DelveState
+	context.CurrentPosition = getCurrentPosition(state)
+	context.StopReason = state.StateReason
+	context.Threads = convertThreads(state.Threads)
+	context.Goroutine = state.SelectedGoroutine
+	context.OperationSummary = state.Summary
+
+	return context
 }
 
 // getCurrentPosition extracts the current position from a DebuggerState
@@ -216,4 +223,98 @@ func convertThreads(threads []*types.Thread) []types.Thread {
 		}
 	}
 	return result
+}
+
+// createContinueResponse creates a ContinueResponse from a DebuggerState
+func createContinueResponse(state *types.DebuggerState, err error) types.ContinueResponse {
+	context := createDebugContext(state)
+	if err != nil {
+		context.ErrorMessage = err.Error()
+		return types.ContinueResponse{
+			Status:  "error",
+			Context: context,
+		}
+	}
+
+	var stoppedAt *types.Location
+	var hitBreakpoint *types.Breakpoint
+	if state != nil && state.CurrentThread != nil {
+		stoppedAt = &state.CurrentThread.Location
+		if state.DelveState != nil && state.DelveState.CurrentThread != nil && state.DelveState.CurrentThread.Breakpoint != nil {
+			bp := state.DelveState.CurrentThread.Breakpoint
+			hitBreakpoint = &types.Breakpoint{
+				DelveBreakpoint: bp,
+				ID:             bp.ID,
+				Status:         getBreakpointStatus(bp),
+				Location: types.Location{
+					File:     bp.File,
+					Line:     bp.Line,
+					Function: getFunctionNameFromBreakpoint(bp),
+					Package:  getPackageNameFromBreakpoint(bp),
+					Summary:  fmt.Sprintf("At %s:%d in %s", bp.File, bp.Line, getFunctionNameFromBreakpoint(bp)),
+				},
+				Description: bp.Name,
+				HitCount:    uint64(bp.TotalHitCount),
+			}
+		}
+	}
+
+	var stopReason string
+	if state != nil {
+		stopReason = state.StateReason
+	}
+
+	return types.ContinueResponse{
+		Status:        "success",
+		Context:       context,
+		StoppedAt:     stoppedAt,
+		StopReason:    stopReason,
+		HitBreakpoint: hitBreakpoint,
+	}
+}
+
+// createStepResponse creates a StepResponse from a DebuggerState
+func createStepResponse(state *types.DebuggerState, stepType string, fromLocation *types.Location, err error) types.StepResponse {
+	context := createDebugContext(state)
+	if err != nil {
+		context.ErrorMessage = err.Error()
+		return types.StepResponse{
+			Status:  "error",
+			Context: context,
+		}
+	}
+
+	var toLocation types.Location
+	if state != nil && state.CurrentThread != nil {
+		toLocation = state.CurrentThread.Location
+	}
+
+	// Handle nil fromLocation
+	if fromLocation == nil {
+		fromLocation = &types.Location{
+			Summary: "unknown location",
+		}
+	}
+
+	return types.StepResponse{
+		Status:       "success",
+		Context:      context,
+		StepType:     stepType,
+		FromLocation: *fromLocation,
+		ToLocation:   toLocation,
+	}
+}
+
+// getCurrentLocation gets the current location from a DebuggerState
+func getCurrentLocation(state *api.DebuggerState) *types.Location {
+	if state == nil || state.CurrentThread == nil {
+		return nil
+	}
+	return &types.Location{
+		File:     state.CurrentThread.File,
+		Line:     state.CurrentThread.Line,
+		Function: getFunctionName(state.CurrentThread),
+		Package:  getPackageName(state.CurrentThread),
+		Summary:  fmt.Sprintf("At %s:%d in %s", state.CurrentThread.File, state.CurrentThread.Line, getFunctionName(state.CurrentThread)),
+	}
 }

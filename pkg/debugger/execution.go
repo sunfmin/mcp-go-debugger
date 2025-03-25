@@ -10,9 +10,9 @@ import (
 )
 
 // Continue resumes program execution until next breakpoint or program termination
-func (c *Client) Continue() (*types.DebuggerState, error) {
+func (c *Client) Continue() types.ContinueResponse {
 	if c.client == nil {
-		return nil, fmt.Errorf("no active debug session")
+		return createContinueResponse(nil, fmt.Errorf("no active debug session"))
 	}
 
 	logger.Debug("Continuing execution")
@@ -23,7 +23,7 @@ func (c *Client) Continue() (*types.DebuggerState, error) {
 	// Wait for the state update from the channel
 	delveState := <-stateChan
 	if delveState.Err != nil {
-		return nil, fmt.Errorf("continue command failed: %v", delveState.Err)
+		return createContinueResponse(nil, fmt.Errorf("continue command failed: %v", delveState.Err))
 	}
 
 	// Convert to our state type
@@ -36,7 +36,7 @@ func (c *Client) Continue() (*types.DebuggerState, error) {
 		logger.Debug("Program has exited")
 		state.StateReason = fmt.Sprintf("Program exited with status %d", delveState.ExitStatus)
 		state.Summary = fmt.Sprintf("Program has exited with status %d", delveState.ExitStatus)
-		return state, nil
+		return createContinueResponse(state, nil)
 	}
 
 	// Log information about the program state
@@ -63,26 +63,28 @@ func (c *Client) Continue() (*types.DebuggerState, error) {
 		state = convertToDebuggerState(delveState)
 	}
 
-	return state, nil
+	return createContinueResponse(state, nil)
 }
 
 // Step executes a single instruction, stepping into function calls
-func (c *Client) Step() (*types.DebuggerState, error) {
+func (c *Client) Step() types.StepResponse {
 	if c.client == nil {
-		return nil, fmt.Errorf("no active debug session")
+		return createStepResponse(nil, "into", nil, fmt.Errorf("no active debug session"))
 	}
 
 	// Check if program is running or not stopped
 	delveState, err := c.client.GetState()
 	if err != nil {
-		return nil, fmt.Errorf("failed to get state: %v", err)
+		return createStepResponse(nil, "into", nil, fmt.Errorf("failed to get state: %v", err))
 	}
+
+	fromLocation := getCurrentLocation(delveState)
 
 	if delveState.Running {
 		logger.Debug("Warning: Cannot step when program is running, waiting for program to stop")
 		stoppedState, err := waitForStop(c, 2*time.Second)
 		if err != nil {
-			return nil, fmt.Errorf("failed to wait for program to stop: %v", err)
+			return createStepResponse(nil, "into", fromLocation, fmt.Errorf("failed to wait for program to stop: %v", err))
 		}
 		delveState = stoppedState
 	}
@@ -90,7 +92,7 @@ func (c *Client) Step() (*types.DebuggerState, error) {
 	logger.Debug("Stepping into")
 	nextState, err := c.client.Step()
 	if err != nil {
-		return nil, fmt.Errorf("step into command failed: %v", err)
+		return createStepResponse(nil, "into", fromLocation, fmt.Errorf("step into command failed: %v", err))
 	}
 
 	state := convertToDebuggerState(nextState)
@@ -116,26 +118,28 @@ func (c *Client) Step() (*types.DebuggerState, error) {
 		}
 	}
 
-	return state, nil
+	return createStepResponse(state, "into", fromLocation, nil)
 }
 
 // StepOver executes the next instruction, stepping over function calls
-func (c *Client) StepOver() (*types.DebuggerState, error) {
+func (c *Client) StepOver() types.StepResponse {
 	if c.client == nil {
-		return nil, fmt.Errorf("no active debug session")
+		return createStepResponse(nil, "over", nil, fmt.Errorf("no active debug session"))
 	}
 
 	// Check if program is running or not stopped
 	delveState, err := c.client.GetState()
 	if err != nil {
-		return nil, fmt.Errorf("failed to get state: %v", err)
+		return createStepResponse(nil, "over", nil, fmt.Errorf("failed to get state: %v", err))
 	}
+
+	fromLocation := getCurrentLocation(delveState)
 
 	if delveState.Running {
 		logger.Debug("Warning: Cannot step when program is running, waiting for program to stop")
 		stoppedState, err := waitForStop(c, 2*time.Second)
 		if err != nil {
-			return nil, fmt.Errorf("failed to wait for program to stop: %v", err)
+			return createStepResponse(nil, "over", fromLocation, fmt.Errorf("failed to wait for program to stop: %v", err))
 		}
 		delveState = stoppedState
 	}
@@ -143,7 +147,7 @@ func (c *Client) StepOver() (*types.DebuggerState, error) {
 	logger.Debug("Stepping over next line")
 	nextState, err := c.client.Next()
 	if err != nil {
-		return nil, fmt.Errorf("step over command failed: %v", err)
+		return createStepResponse(nil, "over", fromLocation, fmt.Errorf("step over command failed: %v", err))
 	}
 
 	state := convertToDebuggerState(nextState)
@@ -169,26 +173,28 @@ func (c *Client) StepOver() (*types.DebuggerState, error) {
 		}
 	}
 
-	return state, nil
+	return createStepResponse(state, "over", fromLocation, nil)
 }
 
 // StepOut executes until the current function returns
-func (c *Client) StepOut() (*types.DebuggerState, error) {
+func (c *Client) StepOut() types.StepResponse {
 	if c.client == nil {
-		return nil, fmt.Errorf("no active debug session")
+		return createStepResponse(nil, "out", nil, fmt.Errorf("no active debug session"))
 	}
 
 	// Check if program is running or not stopped
 	delveState, err := c.client.GetState()
 	if err != nil {
-		return nil, fmt.Errorf("failed to get state: %v", err)
+		return createStepResponse(nil, "out", nil, fmt.Errorf("failed to get state: %v", err))
 	}
+
+	fromLocation := getCurrentLocation(delveState)
 
 	if delveState.Running {
 		logger.Debug("Warning: Cannot step out when program is running, waiting for program to stop")
 		stoppedState, err := waitForStop(c, 2*time.Second)
 		if err != nil {
-			return nil, fmt.Errorf("failed to wait for program to stop: %v", err)
+			return createStepResponse(nil, "out", fromLocation, fmt.Errorf("failed to wait for program to stop: %v", err))
 		}
 		delveState = stoppedState
 	}
@@ -196,7 +202,7 @@ func (c *Client) StepOut() (*types.DebuggerState, error) {
 	logger.Debug("Stepping out")
 	nextState, err := c.client.StepOut()
 	if err != nil {
-		return nil, fmt.Errorf("step out command failed: %v", err)
+		return createStepResponse(nil, "out", fromLocation, fmt.Errorf("step out command failed: %v", err))
 	}
 
 	state := convertToDebuggerState(nextState)
@@ -222,7 +228,7 @@ func (c *Client) StepOut() (*types.DebuggerState, error) {
 		}
 	}
 
-	return state, nil
+	return createStepResponse(state, "out", fromLocation, nil)
 }
 
 // Helper function to convert Delve state to our type
