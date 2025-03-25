@@ -1,17 +1,15 @@
 package debugger
 
 import (
-	"bufio"
 	"context"
 	"fmt"
 	"net"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
-	"strings"
 	"time"
 
+	"github.com/go-delve/delve/pkg/gobuild"
 	"github.com/go-delve/delve/pkg/logflags"
 	"github.com/go-delve/delve/pkg/proc"
 	"github.com/go-delve/delve/service"
@@ -20,6 +18,13 @@ import (
 	"github.com/go-delve/delve/service/rpccommon"
 	"github.com/sunfmin/mcp-go-debugger/pkg/logger"
 	"github.com/sunfmin/mcp-go-debugger/pkg/types"
+)
+
+// Default build flags for compiling with optimizations disabled
+const (
+	defaultBuildFlags = "-gcflags=all=-N -l"
+	// Test build flags need to be different since -l can't be used with -c
+	defaultTestBuildFlags = "-gcflags=all=-N"
 )
 
 // LaunchProgram starts a new program with debugging enabled
@@ -40,25 +45,22 @@ func (c *Client) LaunchProgram(program string, args []string) (*types.LaunchResp
 		return nil, fmt.Errorf("program file not found: %s", absPath)
 	}
 
-	logger.Debug("Getting free port")
 	// Get an available port for the debug server
 	port, err := getFreePort()
 	if err != nil {
 		return nil, fmt.Errorf("failed to find available port: %v", err)
 	}
 
-	logger.Debug("Setting up Delve logging")
 	// Configure Delve logging
 	logflags.Setup(false, "", "")
 
-	logger.Debug("Creating listener on port %d", port)
 	// Create a listener for the debug server
 	listener, err := net.Listen("tcp", fmt.Sprintf("localhost:%d", port))
 	if err != nil {
 		return nil, fmt.Errorf("couldn't start listener: %s", err)
 	}
 
-	// Create pipes for stdout and stderr using the proc.Redirector function
+	// Create pipes for stdout and stderr
 	stdoutReader, stdoutRedirect, err := proc.Redirector()
 	if err != nil {
 		return nil, fmt.Errorf("failed to create stdout redirector: %v", err)
@@ -70,7 +72,6 @@ func (c *Client) LaunchProgram(program string, args []string) (*types.LaunchResp
 		return nil, fmt.Errorf("failed to create stderr redirector: %v", err)
 	}
 
-	logger.Debug("Creating Delve config")
 	// Create Delve config
 	config := &service.Config{
 		Listener:    listener,
@@ -91,7 +92,6 @@ func (c *Client) LaunchProgram(program string, args []string) (*types.LaunchResp
 	go c.captureOutput(stdoutReader, "stdout")
 	go c.captureOutput(stderrReader, "stderr")
 
-	logger.Debug("Creating debug server")
 	// Create and start the debugging server
 	server := rpccommon.NewServer(config)
 	if server == nil {
@@ -103,55 +103,40 @@ func (c *Client) LaunchProgram(program string, args []string) (*types.LaunchResp
 	// Create a channel to signal when the server is ready or fails
 	serverReady := make(chan error, 1)
 
-	logger.Debug("Starting debug server in goroutine")
 	// Start server in a goroutine
 	go func() {
-		logger.Debug("Running server")
 		err := server.Run()
 		if err != nil {
 			logger.Debug("Debug server error: %v", err)
 			serverReady <- err
 		}
-		logger.Debug("Server run completed")
 	}()
-
-	logger.Debug("Waiting for server to start")
 
 	// Try to connect to the server with a timeout
 	addr := listener.Addr().String()
-
-	// Wait up to 3 seconds for server to be available
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 
 	// Try to connect repeatedly until timeout
-	connected := false
+	var connected bool
 	for !connected {
 		select {
 		case <-ctx.Done():
-			// Timeout reached
 			return nil, fmt.Errorf("timed out waiting for debug server to start")
 		case err := <-serverReady:
-			// Server reported an error
 			return nil, fmt.Errorf("debug server failed to start: %v", err)
 		default:
-			// Try to connect
 			client := rpc2.NewClient(addr)
-			// Make a simple API call to test connection
 			state, err := client.GetState()
 			if err == nil && state != nil {
-				// Connection successful
 				c.client = client
 				c.target = absPath
 				connected = true
-				logger.Debug("Successfully launched program: %s", program)
 
-				// Get initial state
 				debugState := convertToDebuggerState(state)
 				debugContext := createDebugContext(debugState)
 				debugContext.LastOperation = "launch"
 
-				// Create launch response
 				response := &types.LaunchResponse{
 					Status:      "success",
 					Context:     debugContext,
@@ -160,10 +145,8 @@ func (c *Client) LaunchProgram(program string, args []string) (*types.LaunchResp
 				}
 
 				return response, nil
-			} else {
-				// Failed, wait briefly and retry
-				time.Sleep(100 * time.Millisecond)
 			}
+			time.Sleep(100 * time.Millisecond)
 		}
 	}
 
@@ -296,7 +279,7 @@ func (c *Client) AttachToProcess(pid int) (*types.AttachResponse, error) {
 func (c *Client) Close() (*types.CloseResponse, error) {
 	if c.client == nil {
 		return &types.CloseResponse{
-			Status:  "success",
+			Status: "success",
 			Context: types.DebugContext{
 				Timestamp:     time.Now(),
 				LastOperation: "close",
@@ -336,6 +319,12 @@ func (c *Client) Close() (*types.CloseResponse, error) {
 
 	// Reset the client
 	c.client = nil
+
+	// Clean up the debug binary if it exists
+	if c.target != "" {
+		gobuild.Remove(c.target)
+		c.target = ""
+	}
 
 	// Create a new channel for server stop operations
 	stopChan := make(chan error, 1)
@@ -399,68 +388,38 @@ func (c *Client) DebugSourceFile(sourceFile string, args []string) (*types.Debug
 		return nil, fmt.Errorf("source file not found: %s", absPath)
 	}
 
-	// Create a temporary directory for compilation
-	tempDir, err := os.MkdirTemp("", "mcp-go-debugger-*")
+	// Generate a unique debug binary name
+	debugBinary := gobuild.DefaultDebugBinaryPath("debug_binary")
+
+	logger.Debug("Compiling source file %s to %s", absPath, debugBinary)
+
+	// Compile the source file with output capture
+	cmd, output, err := gobuild.GoBuildCombinedOutput(debugBinary, []string{absPath}, defaultBuildFlags)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create temp directory: %v", err)
-	}
-	c.tempDir = tempDir
-	// We'll clean this up when the debug session ends
-
-	// Build a temporary binary in the temp directory
-	outputBinary := filepath.Join(tempDir, "debug_binary")
-
-	logger.Debug("Compiling source file %s to %s", absPath, outputBinary)
-
-	// Create pipes for build output
-	buildStdoutReader, buildStdoutWriter, err := os.Pipe()
-	if err != nil {
-		os.RemoveAll(tempDir)
-		return nil, fmt.Errorf("failed to create stdout pipe: %v", err)
-	}
-	defer buildStdoutReader.Close()
-	defer buildStdoutWriter.Close()
-
-	// Run go build with optimizations disabled
-	buildCmd := exec.Command("go", "build", "-gcflags", "all=-N -l", "-o", outputBinary, absPath)
-	buildCmd.Stdout = buildStdoutWriter
-	buildCmd.Stderr = buildStdoutWriter
-
-	err = buildCmd.Start()
-	if err != nil {
-		os.RemoveAll(tempDir)
-		return nil, fmt.Errorf("failed to start compilation: %v", err)
-	}
-
-	// Capture build output
-	go func() {
-		scanner := bufio.NewScanner(buildStdoutReader)
-		for scanner.Scan() {
-			logger.Debug("Build output: %s", scanner.Text())
-		}
-	}()
-
-	err = buildCmd.Wait()
-	if err != nil {
-		os.RemoveAll(tempDir)
-		return nil, fmt.Errorf("failed to compile source file: %v", err)
+		logger.Debug("Build command: %s", cmd)
+		logger.Debug("Build output: %s", string(output))
+		gobuild.Remove(debugBinary)
+		return nil, fmt.Errorf("failed to compile source file: %v\nOutput: %s", err, string(output))
 	}
 
 	// Launch the compiled binary with the debugger
 	logger.Debug("Launching compiled binary with debugger")
-	response, err := c.LaunchProgram(outputBinary, args)
+	response, err := c.LaunchProgram(debugBinary, args)
 	if err != nil {
-		os.RemoveAll(tempDir) // Clean up temp directory on error
+		gobuild.Remove(debugBinary)
 		return nil, fmt.Errorf("failed to launch debugger: %v", err)
 	}
 
+	// Store the binary path for cleanup
+	c.target = debugBinary
+
 	// Create debug source response
 	debugResponse := &types.DebugSourceResponse{
-		Status:      "success",
-		Context:     response.Context,
-		SourceFile:  sourceFile,
-		BinaryPath:  outputBinary,
-		CmdLine:     append([]string{outputBinary}, args...),
+		Status:     "success",
+		Context:    response.Context,
+		SourceFile: sourceFile,
+		BinaryPath: debugBinary,
+		CmdLine:    append([]string{debugBinary}, args...),
 	}
 
 	logger.Debug("Successfully started debugging source file %s", sourceFile)
@@ -483,73 +442,23 @@ func (c *Client) DebugTest(testFilePath string, testName string, testFlags []str
 		return nil, fmt.Errorf("test file not found: %s", absPath)
 	}
 
-	// Create a temporary directory for compilation
-	tempDir, err := os.MkdirTemp("", "mcp-go-debugger-*")
-	if err != nil {
-		return nil, fmt.Errorf("failed to create temp directory: %v", err)
-	}
-	c.tempDir = tempDir
-	// We'll clean this up when the debug session ends
-
-	// Get the directory of the test file - we'll compile from here
+	// Get the directory of the test file
 	testDir := filepath.Dir(absPath)
 	logger.Debug("Test directory: %s", testDir)
 
-	// Create a name for the test binary
-	outputBinary := filepath.Join(tempDir, "test_binary")
+	// Generate a unique debug binary name
+	debugBinary := gobuild.DefaultDebugBinaryPath("debug.test")
 
-	logger.Debug("Compiling package in %s to %s", testDir, outputBinary)
+	logger.Debug("Compiling test package in %s to %s", testDir, debugBinary)
 
-	// Create pipes for build output
-	buildStdoutReader, buildStdoutWriter, err := os.Pipe()
+	// Compile the test package with output capture using test-specific build flags
+	cmd, output, err := gobuild.GoTestBuildCombinedOutput(debugBinary, []string{testDir}, defaultTestBuildFlags)
 	if err != nil {
-		os.RemoveAll(tempDir)
-		return nil, fmt.Errorf("failed to create stdout pipe: %v", err)
+		logger.Debug("Build command: %s", cmd)
+		logger.Debug("Build output: %s", string(output))
+		gobuild.Remove(debugBinary)
+		return nil, fmt.Errorf("failed to compile test package: %v\nOutput: %s", err, string(output))
 	}
-	defer buildStdoutReader.Close()
-	defer buildStdoutWriter.Close()
-
-	// Run go test with -c flag to compile the test binary but not run it
-	// -o specifies the output file, but we don't specify a specific test file
-	// Instead, we compile the whole package from the test directory
-	buildCmd := exec.Command("go", "test", "-c", "-o", outputBinary)
-	buildCmd.Dir = testDir // Set working directory to the test directory
-	buildCmd.Stdout = buildStdoutWriter
-	buildCmd.Stderr = buildStdoutWriter
-
-	logger.Debug("Running build command: %v in %s", buildCmd.Args, buildCmd.Dir)
-	err = buildCmd.Start()
-	if err != nil {
-		os.RemoveAll(tempDir)
-		return nil, fmt.Errorf("failed to start test compilation: %v", err)
-	}
-
-	// Capture build output
-	var buildOutput strings.Builder
-	go func() {
-		scanner := bufio.NewScanner(buildStdoutReader)
-		for scanner.Scan() {
-			line := scanner.Text()
-			buildOutput.WriteString(line + "\n")
-			logger.Debug("Build output: %s", line)
-		}
-	}()
-
-	err = buildCmd.Wait()
-	if err != nil {
-		logger.Debug("Compilation failed: %v\nOutput: %s", err, buildOutput.String())
-		os.RemoveAll(tempDir)
-		return nil, fmt.Errorf("failed to compile test file: %v", err)
-	}
-
-	// Verify the binary was created
-	if _, err := os.Stat(outputBinary); os.IsNotExist(err) {
-		logger.Debug("Output binary not found at %s after compilation", outputBinary)
-		os.RemoveAll(tempDir)
-		return nil, fmt.Errorf("compilation completed but binary not found")
-	}
-
-	logger.Debug("Successfully compiled test binary: %s", outputBinary)
 
 	// Create args to run the specific test
 	args := []string{
@@ -569,23 +478,26 @@ func (c *Client) DebugTest(testFilePath string, testName string, testFlags []str
 
 	logger.Debug("Launching test binary with debugger, test name: %s, args: %v", testName, args)
 	// Launch the compiled test binary with the debugger
-	response, err := c.LaunchProgram(outputBinary, args)
+	response, err := c.LaunchProgram(debugBinary, args)
 	if err != nil {
-		os.RemoveAll(tempDir) // Clean up temp directory on error
+		gobuild.Remove(debugBinary)
 		return nil, fmt.Errorf("failed to launch debugger: %v", err)
 	}
 
+	// Store the binary path for cleanup
+	c.target = debugBinary
+
 	// Create debug test response
 	testResponse := &types.DebugTestResponse{
-		Status:      "success",
-		Context:     response.Context,
-		TestFile:    testFilePath,
-		TestName:    testName,
-		BinaryPath:  outputBinary,
-		CmdLine:     append([]string{outputBinary}, args...),
-		TestFlags:   testFlags,
+		Status:     "success",
+		Context:    response.Context,
+		TestFile:   testFilePath,
+		TestName:   testName,
+		BinaryPath: debugBinary,
+		CmdLine:    append([]string{debugBinary}, args...),
+		TestFlags:  testFlags,
 	}
 
 	logger.Debug("Successfully started debugging test %s in file %s", testName, testFilePath)
 	return testResponse, nil
-} 
+}
