@@ -9,105 +9,134 @@ import (
 )
 
 // SetBreakpoint sets a breakpoint at the specified file and line
-func (c *Client) SetBreakpoint(file string, line int) (*types.Breakpoint, error) {
+func (c *Client) SetBreakpoint(file string, line int) types.BreakpointResponse {
 	if c.client == nil {
-		return nil, fmt.Errorf("no active debug session")
+		return createBreakpointResponse(nil, nil, nil, nil, fmt.Errorf("no active debug session"))
 	}
 
-	bp := &api.Breakpoint{
+	logger.Debug("Setting breakpoint at %s:%d", file, line)
+	bp, err := c.client.CreateBreakpoint(&api.Breakpoint{
 		File: file,
 		Line: line,
-	}
+	})
 
-	// Call rpc client's CreateBreakpoint method
-	delveBp, err := c.client.CreateBreakpoint(bp)
 	if err != nil {
-		return nil, fmt.Errorf("failed to set breakpoint: %v", err)
+		return createBreakpointResponse(nil, nil, nil, nil, fmt.Errorf("failed to set breakpoint: %v", err))
 	}
 
-	// Convert to our type
-	result := &types.Breakpoint{
-		DelveBreakpoint: delveBp,
-		ID:              delveBp.ID,
-		Status:          "enabled",
+	// Get current state for context
+	state, err := c.client.GetState()
+	if err != nil {
+		logger.Debug("Warning: Failed to get state after setting breakpoint: %v", err)
+	}
+
+	debugState := convertToDebuggerState(&api.DebuggerState{
+		CurrentThread: state.CurrentThread,
+		Threads:      state.Threads,
+	})
+
+	breakpoint := &types.Breakpoint{
+		DelveBreakpoint: bp,
+		ID:             bp.ID,
+		Status:         getBreakpointStatus(bp),
 		Location: types.Location{
-			File:     delveBp.File,
-			Line:     delveBp.Line,
-			Function: getFunctionNameFromBreakpoint(delveBp),
-			Package:  getPackageNameFromBreakpoint(delveBp),
-			Summary:  fmt.Sprintf("Breakpoint at %s:%d", delveBp.File, delveBp.Line),
+			File:     bp.File,
+			Line:     bp.Line,
+			Function: getFunctionNameFromBreakpoint(bp),
+			Package:  getPackageNameFromBreakpoint(bp),
+			Summary:  fmt.Sprintf("At %s:%d in %s", bp.File, bp.Line, getFunctionNameFromBreakpoint(bp)),
 		},
-		Description: fmt.Sprintf("Breakpoint at %s:%d", delveBp.File, delveBp.Line),
-		Package:     getPackageNameFromBreakpoint(delveBp),
-		HitCount:    delveBp.TotalHitCount,
+		Description: bp.Name,
+		HitCount:    uint64(bp.TotalHitCount),
 	}
 
-	logger.Debug("Breakpoint set at %s:%d (ID: %d)", file, line, result.ID)
-	return result, nil
+	// Get all breakpoints
+	allBps, err := c.ListBreakpoints()
+	if err != nil {
+		logger.Debug("Warning: Failed to list breakpoints: %v", err)
+	}
+
+	return createBreakpointResponse(debugState, breakpoint, allBps, nil, nil)
 }
 
-// ListBreakpoints returns a list of all currently set breakpoints
-func (c *Client) ListBreakpoints() ([]*types.Breakpoint, error) {
+// ListBreakpoints returns all currently set breakpoints
+func (c *Client) ListBreakpoints() ([]types.Breakpoint, error) {
 	if c.client == nil {
 		return nil, fmt.Errorf("no active debug session")
 	}
 
-	// Call rpc client's ListBreakpoints method
-	delveBreakpoints, err := c.client.ListBreakpoints(false)
+	bps, err := c.client.ListBreakpoints(false)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list breakpoints: %v", err)
 	}
 
-	// Convert to our types
-	breakpoints := make([]*types.Breakpoint, len(delveBreakpoints))
-	for i, delveBp := range delveBreakpoints {
-		breakpoints[i] = &types.Breakpoint{
-			DelveBreakpoint: delveBp,
-			ID:              delveBp.ID,
-			Status:          getBreakpointStatus(delveBp),
+	var breakpoints []types.Breakpoint
+	for _, bp := range bps {
+		breakpoints = append(breakpoints, types.Breakpoint{
+			DelveBreakpoint: bp,
+			ID:             bp.ID,
+			Status:         getBreakpointStatus(bp),
 			Location: types.Location{
-				File:     delveBp.File,
-				Line:     delveBp.Line,
-				Function: getFunctionNameFromBreakpoint(delveBp),
-				Package:  getPackageNameFromBreakpoint(delveBp),
-				Summary:  fmt.Sprintf("Breakpoint at %s:%d", delveBp.File, delveBp.Line),
+				File:     bp.File,
+				Line:     bp.Line,
+				Function: getFunctionNameFromBreakpoint(bp),
+				Package:  getPackageNameFromBreakpoint(bp),
+				Summary:  fmt.Sprintf("At %s:%d in %s", bp.File, bp.Line, getFunctionNameFromBreakpoint(bp)),
 			},
-			Description: fmt.Sprintf("Breakpoint at %s:%d", delveBp.File, delveBp.Line),
-			Package:     getPackageNameFromBreakpoint(delveBp),
-			HitCount:    delveBp.TotalHitCount,
-		}
+			Description: bp.Name,
+			HitCount:    uint64(bp.TotalHitCount),
+		})
 	}
 
-	logger.Debug("Retrieved %d breakpoints", len(breakpoints))
 	return breakpoints, nil
 }
 
-// RemoveBreakpoint removes a breakpoint with the specified ID
-func (c *Client) RemoveBreakpoint(id int) (*types.Breakpoint, error) {
+// RemoveBreakpoint removes a breakpoint by its ID
+func (c *Client) RemoveBreakpoint(id int) types.BreakpointResponse {
 	if c.client == nil {
-		return nil, fmt.Errorf("no active debug session")
+		return createBreakpointResponse(nil, nil, nil, nil, fmt.Errorf("no active debug session"))
 	}
 
-	// Call rpc client's ClearBreakpoint method
-	delveBp, err := c.client.ClearBreakpoint(id)
+	// Get breakpoint info before removing
+	bps, err := c.ListBreakpoints()
 	if err != nil {
-		return nil, fmt.Errorf("failed to remove breakpoint with ID %d: %v", id, err)
+		return createBreakpointResponse(nil, nil, nil, nil, fmt.Errorf("failed to get breakpoint info: %v", err))
 	}
-	result := &types.Breakpoint{
-		DelveBreakpoint: delveBp,
-		ID:              delveBp.ID,
-		Status:          "enabled",
-		Location: types.Location{
-			File:     delveBp.File,
-			Line:     delveBp.Line,
-			Function: getFunctionNameFromBreakpoint(delveBp),
-			Package:  getPackageNameFromBreakpoint(delveBp),
-			Summary:  fmt.Sprintf("Breakpoint at %s:%d", delveBp.File, delveBp.Line),
-		},
-		Description: fmt.Sprintf("Breakpoint at %s:%d", delveBp.File, delveBp.Line),
-		Package:     getPackageNameFromBreakpoint(delveBp),
-		HitCount:    delveBp.TotalHitCount,
+
+	var targetBp *types.Breakpoint
+	for _, bp := range bps {
+		if bp.ID == id {
+			targetBp = &bp
+			break
+		}
 	}
-	logger.Debug("Removed breakpoint with ID %d at %s:%d", id, delveBp.File, delveBp.Line)
-	return result, nil
+
+	if targetBp == nil {
+		return createBreakpointResponse(nil, nil, nil, nil, fmt.Errorf("breakpoint %d not found", id))
+	}
+
+	logger.Debug("Removing breakpoint %d at %s:%d", id, targetBp.Location.File, targetBp.Location.Line)
+	_, err = c.client.ClearBreakpoint(id)
+	if err != nil {
+		return createBreakpointResponse(nil, targetBp, bps, nil, fmt.Errorf("failed to remove breakpoint: %v", err))
+	}
+
+	// Get current state for context
+	state, err := c.client.GetState()
+	if err != nil {
+		logger.Debug("Warning: Failed to get state after removing breakpoint: %v", err)
+	}
+
+	debugState := convertToDebuggerState(&api.DebuggerState{
+		CurrentThread: state.CurrentThread,
+		Threads:      state.Threads,
+	})
+
+	// Get updated breakpoint list
+	updatedBps, err := c.ListBreakpoints()
+	if err != nil {
+		logger.Debug("Warning: Failed to list breakpoints after removal: %v", err)
+	}
+
+	return createBreakpointResponse(debugState, targetBp, updatedBps, nil, nil)
 }

@@ -2,10 +2,8 @@ package debugger
 
 import (
 	"fmt"
-	"github.com/go-delve/delve/service/api"
 	"time"
 
-	"github.com/sunfmin/mcp-go-debugger/pkg/logger"
 	"github.com/sunfmin/mcp-go-debugger/pkg/types"
 )
 
@@ -17,78 +15,51 @@ type OutputMessage struct {
 }
 
 // GetDebuggerOutput returns the captured stdout and stderr from the debugged program
-func (c *Client) GetDebuggerOutput() (*types.DebuggerOutputResponse, error) {
+func (c *Client) GetDebuggerOutput() types.DebuggerOutputResponse {
 	if c.client == nil {
-		return nil, fmt.Errorf("no active debug session")
+		return types.DebuggerOutputResponse{
+			Context: types.DebugContext{
+				LastOperation: "get_output",
+				ErrorMessage:  "no active debug session",
+			},
+		}
 	}
 
-	logger.Debug("Getting captured program output")
-
-	// Check if debugger is ready
 	state, err := c.client.GetState()
 	if err != nil {
-		return nil, fmt.Errorf("failed to get state: %v", err)
-	}
-
-	// Return current output
-	output := &types.DebuggerOutputResponse{
-		Stdout:        c.stdout.String(),
-		Stderr:        c.stderr.String(),
-		OutputSummary: generateOutputSummary(c.stdout.String(), c.stderr.String(), state),
-	}
-
-	logger.Debug("Retrieved program output, stdout: %d bytes, stderr: %d bytes",
-		len(output.Stdout), len(output.Stderr))
-
-	// If process exited, include information in debug log
-	if state.Exited {
-		logger.Debug("Program has exited with status code %d", state.ExitStatus)
-	}
-
-	return output, nil
-}
-
-// GetCapturedOutput returns the next captured output message
-// Returns nil when there are no more messages
-func (c *Client) GetCapturedOutput() *OutputMessage {
-	select {
-	case msg := <-c.outputChan:
-		return &msg
-	default:
-		return nil
-	}
-}
-
-// GetAllCapturedOutput returns all currently available captured output messages
-func (c *Client) GetAllCapturedOutput() []OutputMessage {
-	var messages []OutputMessage
-	for {
-		msg := c.GetCapturedOutput()
-		if msg == nil {
-			break
+		return types.DebuggerOutputResponse{
+			Context: types.DebugContext{
+				LastOperation: "get_output",
+				ErrorMessage:  fmt.Sprintf("failed to get state: %v", err),
+			},
 		}
-		messages = append(messages, *msg)
 	}
-	return messages
+
+	debugState := convertToDebuggerState(state)
+
+	c.outputMutex.Lock()
+	stdout := c.stdout.String()
+	stderr := c.stderr.String()
+	c.outputMutex.Unlock()
+
+	return types.DebuggerOutputResponse{
+		Context: createDebugContext(debugState),
+		Stdout:  stdout,
+		Stderr:  stderr,
+	}
 }
 
-// Helper function to generate a summary of the output
-func generateOutputSummary(stdout, stderr string, state *api.DebuggerState) string {
-	var summary string
-	if state.Exited {
-		summary = fmt.Sprintf("Program exited with status %d. ", state.ExitStatus)
-	}
+// ClearOutput clears the captured stdout and stderr buffers
+func (c *Client) ClearOutput() {
+	c.outputMutex.Lock()
+	defer c.outputMutex.Unlock()
+	c.stdout.Reset()
+	c.stderr.Reset()
+}
 
-	if len(stdout) > 0 {
-		summary += fmt.Sprintf("Stdout: %d bytes. ", len(stdout))
-	}
-	if len(stderr) > 0 {
-		summary += fmt.Sprintf("Stderr: %d bytes. ", len(stderr))
-	}
-
-	if len(summary) == 0 {
-		summary = "No output captured"
-	}
-
-	return summary
+// GetCapturedOutput returns the current stdout and stderr as strings
+func (c *Client) GetCapturedOutput() (string, string) {
+	c.outputMutex.Lock()
+	defer c.outputMutex.Unlock()
+	return c.stdout.String(), c.stderr.String()
 }

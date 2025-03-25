@@ -287,11 +287,7 @@ func (s *MCPDebugServer) Launch(ctx context.Context, request mcp.CallToolRequest
 	}
 
 	// Launch the program
-	response, err := s.debugClient.LaunchProgram(program, args)
-	if err != nil {
-		logger.Error("Failed to launch program", "error", err, "program", program)
-		return newErrorResult("failed to launch program: %v", err), nil
-	}
+	response := s.debugClient.LaunchProgram(program, args)
 
 	return newToolResultJSON(response)
 }
@@ -313,11 +309,7 @@ func (s *MCPDebugServer) Attach(ctx context.Context, request mcp.CallToolRequest
 	}
 
 	// Attach to the process
-	response, err := s.debugClient.AttachToProcess(pid)
-	if err != nil {
-		logger.Error("Failed to attach to process", "error", err, "pid", pid)
-		return newErrorResult("failed to attach to process: %v", err), nil
-	}
+	response := s.debugClient.AttachToProcess(pid)
 
 	return newToolResultJSON(response)
 }
@@ -353,18 +345,9 @@ func (s *MCPDebugServer) SetBreakpoint(ctx context.Context, request mcp.CallTool
 	file := request.Params.Arguments["file"].(string)
 	line := int(request.Params.Arguments["line"].(float64))
 
-	breakpoint, err := s.debugClient.SetBreakpoint(file, line)
-	if err != nil {
-		logger.Error("Failed to set breakpoint", "error", err)
-		return newErrorResult("failed to set breakpoint: %v", err), nil
-	}
+	breakpoint := s.debugClient.SetBreakpoint(file, line)
 
-	response := types.BreakpointResponse{
-		Status:     "success",
-		Breakpoint: *breakpoint,
-	}
-
-	return newToolResultJSON(response)
+	return newToolResultJSON(breakpoint)
 }
 
 // ListBreakpoints handles the list_breakpoints command
@@ -385,7 +368,7 @@ func (s *MCPDebugServer) ListBreakpoints(ctx context.Context, request mcp.CallTo
 	// Convert []*types.Breakpoint to []types.Breakpoint
 	bps := make([]types.Breakpoint, len(breakpoints))
 	for i, bp := range breakpoints {
-		bps[i] = *bp
+		bps[i] = bp
 	}
 
 	response := types.BreakpointResponse{
@@ -406,11 +389,7 @@ func (s *MCPDebugServer) RemoveBreakpoint(ctx context.Context, request mcp.CallT
 
 	id := int(request.Params.Arguments["id"].(float64))
 
-	response, err := s.debugClient.RemoveBreakpoint(id)
-	if err != nil {
-		logger.Error("Failed to remove breakpoint", "error", err)
-		return newErrorResult("failed to remove breakpoint: %v", err), nil
-	}
+	response := s.debugClient.RemoveBreakpoint(id)
 
 	return newToolResultJSON(response)
 }
@@ -438,11 +417,7 @@ func (s *MCPDebugServer) DebugSourceFile(ctx context.Context, request mcp.CallTo
 		}
 	}
 
-	response, err := s.debugClient.DebugSourceFile(file, args)
-	if err != nil {
-		logger.Error("Failed to debug source file", "error", err)
-		return newErrorResult("failed to debug source file: %v", err), nil
-	}
+	response := s.debugClient.DebugSourceFile(file, args)
 
 	return newToolResultJSON(response)
 }
@@ -514,16 +489,7 @@ func (s *MCPDebugServer) EvalVariable(ctx context.Context, request mcp.CallToolR
 		depth = 1
 	}
 
-	variable, err := s.debugClient.EvalVariable(name, depth)
-	if err != nil {
-		logger.Error("Failed to examine variable", "error", err)
-		return newErrorResult("failed to examine variable: %v", err), nil
-	}
-
-	response := types.EvalVariableResponse{
-		Status:   "success",
-		Variable: *variable,
-	}
+	response := s.debugClient.EvalVariable(name, depth)
 
 	return newToolResultJSON(response)
 }
@@ -536,11 +502,7 @@ func (s *MCPDebugServer) GetDebuggerOutput(ctx context.Context, request mcp.Call
 		return newErrorResult("no active debug session, please launch or attach first"), nil
 	}
 
-	output, err := s.debugClient.GetDebuggerOutput()
-	if err != nil {
-		logger.Error("Failed to get debugger output", "error", err)
-		return newErrorResult("failed to get debugger output: %v", err), nil
-	}
+	output := s.debugClient.GetDebuggerOutput()
 
 	return newToolResultJSON(output)
 }
@@ -569,12 +531,8 @@ func (s *MCPDebugServer) DebugTest(ctx context.Context, request mcp.CallToolRequ
 		}
 	}
 
-	response, err := s.debugClient.DebugTest(testfile, testname, testflags)
-	if err != nil {
-		logger.Error("Failed to debug test", "error", err)
-		return newErrorResult("failed to debug test: %v", err), nil
-	}
-
+	response := s.debugClient.DebugTest(testfile, testname, testflags)
+	
 	return newToolResultJSON(response)
 }
 

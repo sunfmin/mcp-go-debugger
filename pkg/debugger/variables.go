@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"reflect"
 	"strings"
-	"time"
 
 	"github.com/go-delve/delve/service/api"
 	"github.com/sunfmin/mcp-go-debugger/pkg/logger"
@@ -29,143 +28,185 @@ type ScopeVariables struct {
 	Package []*types.Variable `json:"package,omitempty"`
 }
 
-// EvalVariable evaluates and returns information about a variable
-func (c *Client) EvalVariable(name string, depth int) (*types.Variable, error) {
+// EvalVariable evaluates a variable expression
+func (c *Client) EvalVariable(name string, depth int) types.EvalVariableResponse {
 	if c.client == nil {
-		return nil, fmt.Errorf("no active debug session")
+		return createEvalVariableResponse(nil, nil, "", "", nil, fmt.Errorf("no active debug session"))
 	}
 
-	logger.Debug("Examining variable '%s' with depth %d", name, depth)
-
-	// GetState to get current goroutine and ensure we're stopped
+	// Get current state for context
 	state, err := c.client.GetState()
 	if err != nil {
-		return nil, fmt.Errorf("failed to get state: %v", err)
+		return createEvalVariableResponse(nil, nil, "", "", nil, fmt.Errorf("failed to get state: %v", err))
 	}
 
-	// Check if program is still running - can't examine variables while running
-	if state.Running {
-		logger.Debug("Warning: Cannot examine variables while program is running, waiting for program to stop")
-		stoppedState, err := waitForStop(c, 2*time.Second)
-		if err != nil {
-			return nil, fmt.Errorf("failed to wait for program to stop: %v", err)
-		}
-		state = stoppedState
+	debugState := convertToDebuggerState(state)
+
+	if state.SelectedGoroutine == nil {
+		return createEvalVariableResponse(debugState, nil, "", "", nil, fmt.Errorf("no goroutine selected"))
 	}
-
-	// Ensure we have a valid current thread
-	if state.CurrentThread == nil {
-		return nil, fmt.Errorf("no current thread available for evaluating variables")
-	}
-
-	// Use the current goroutine
-	goroutineID := state.CurrentThread.GoroutineID
-
-	// Log current position to help with debugging
-	logger.Debug("Current position for variable evaluation: %s:%d",
-		state.CurrentThread.File, state.CurrentThread.Line)
 
 	// Evaluate the variable
-	delveVar, err := c.client.EvalVariable(api.EvalScope{GoroutineID: goroutineID, Frame: 0}, name, api.LoadConfig{
+	v, err := c.client.EvalVariable(api.EvalScope{
+		GoroutineID: state.SelectedGoroutine.ID,
+		Frame:       0,
+	}, name, api.LoadConfig{
 		FollowPointers:     true,
 		MaxVariableRecurse: depth,
-		MaxStringLen:       100,
+		MaxStringLen:       1024,
 		MaxArrayValues:     100,
-		MaxStructFields:    -1,
 	})
 
 	if err != nil {
-		return nil, fmt.Errorf("failed to examine variable: %v", err)
+		return createEvalVariableResponse(debugState, nil, "", "", nil, fmt.Errorf("failed to evaluate variable %s: %v", name, err))
 	}
 
 	// Convert to our type
-	if delveVar == nil {
-		return nil, fmt.Errorf("variable not found")
+	variable := &types.Variable{
+		DelveVar: v,
+		Name:     v.Name,
+		Value:    v.Value,
+		Type:     v.Type,
+		Kind:     getVariableKind(v),
+		TypeInfo: getTypeInfo(v),
+		Summary:  fmt.Sprintf("%s = %s", v.Name, v.Value),
 	}
-	result := convertVariableToInfo(*delveVar)
-	return result, nil
+
+	// Get scope information
+	var function, pkg string
+	var locals []string
+
+	if state.CurrentThread != nil && state.CurrentThread.Function != nil {
+		function = state.CurrentThread.Function.Name()
+		pkg = getPackageName(state.CurrentThread)
+
+		// Get local variables
+		localVars, err := c.client.ListLocalVariables(api.EvalScope{
+			GoroutineID: state.SelectedGoroutine.ID,
+			Frame:       0,
+		}, api.LoadConfig{})
+		if err != nil {
+			logger.Debug("Warning: Failed to list local variables: %v", err)
+		} else {
+			for _, v := range localVars {
+				locals = append(locals, v.Name)
+			}
+		}
+	}
+
+	return createEvalVariableResponse(debugState, variable, function, pkg, locals, nil)
 }
 
-// ListScopeVariables lists all variables in the current scope (local, args, and package)
-func (c *Client) ListScopeVariables(depth int) (*ScopeVariables, error) {
+// ListScopeVariables returns all variables in the current scope
+func (c *Client) ListScopeVariables(depth int) types.EvalVariableResponse {
 	if c.client == nil {
-		return nil, fmt.Errorf("no active debug session")
+		return createEvalVariableResponse(nil, nil, "", "", nil, fmt.Errorf("no active debug session"))
 	}
 
-	logger.Debug("Listing all scope variables with depth %d", depth)
-
-	// GetState to get current goroutine and ensure we're stopped
+	// Get current state for context
 	state, err := c.client.GetState()
 	if err != nil {
-		return nil, fmt.Errorf("failed to get state: %v", err)
+		return createEvalVariableResponse(nil, nil, "", "", nil, fmt.Errorf("failed to get state: %v", err))
 	}
 
-	// Check if program is still running - can't examine variables while running
-	if state.Running {
-		logger.Debug("Warning: Cannot examine variables while program is running, waiting for program to stop")
-		stoppedState, err := waitForStop(c, 2*time.Second)
-		if err != nil {
-			return nil, fmt.Errorf("failed to wait for program to stop: %v", err)
-		}
-		state = stoppedState
-	}
+	debugState := convertToDebuggerState(state)
 
-	// Ensure we have a valid current thread
-	if state.CurrentThread == nil {
-		return nil, fmt.Errorf("no current thread available for listing variables")
-	}
-
-	// Use the current goroutine
-	goroutineID := state.CurrentThread.GoroutineID
-
-	// Create the eval scope
-	scope := api.EvalScope{
-		GoroutineID: goroutineID,
-		Frame:       0,
-	}
-
-	// Create the load config
-	loadConfig := api.LoadConfig{
-		FollowPointers:     true,
-		MaxVariableRecurse: depth,
-		MaxStringLen:       100,
-		MaxArrayValues:     100,
-		MaxStructFields:    -1,
+	if state.SelectedGoroutine == nil {
+		return createEvalVariableResponse(debugState, nil, "", "", nil, fmt.Errorf("no goroutine selected"))
 	}
 
 	// Get local variables
-	logger.Debug("Getting local variables")
-	delveLocalVars, err := c.client.ListLocalVariables(scope, loadConfig)
+	localVars, err := c.client.ListLocalVariables(api.EvalScope{
+		GoroutineID: state.SelectedGoroutine.ID,
+		Frame:       0,
+	}, api.LoadConfig{
+		FollowPointers:     true,
+		MaxVariableRecurse: depth,
+		MaxStringLen:       1024,
+		MaxArrayValues:     100,
+	})
+
 	if err != nil {
-		return nil, fmt.Errorf("failed to list local variables: %v", err)
+		return createEvalVariableResponse(debugState, nil, "", "", nil, fmt.Errorf("failed to list local variables: %v", err))
 	}
 
-	// Get function arguments
-	logger.Debug("Getting function arguments")
-	delveArgs, err := c.client.ListFunctionArgs(scope, loadConfig)
-	if err != nil {
-		return nil, fmt.Errorf("failed to list function arguments: %v", err)
+	// Convert to our type
+	var locals []string
+	var mainVar *types.Variable
+
+	for _, v := range localVars {
+		locals = append(locals, v.Name)
+		if mainVar == nil {
+			mainVar = &types.Variable{
+				DelveVar: &v,
+				Name:     v.Name,
+				Value:    v.Value,
+				Type:     v.Type,
+				Kind:     getVariableKind(&v),
+				TypeInfo: getTypeInfo(&v),
+				Summary:  fmt.Sprintf("%s = %s", v.Name, v.Value),
+			}
+		}
 	}
 
-	// Convert variables to our types
-	localVars := make([]*types.Variable, len(delveLocalVars))
-	for i, v := range delveLocalVars {
-		localVars[i] = convertVariableToInfo(v)
+	// Get function and package info
+	var function, pkg string
+	if state.CurrentThread != nil && state.CurrentThread.Function != nil {
+		function = state.CurrentThread.Function.Name()
+		pkg = getPackageName(state.CurrentThread)
 	}
 
-	args := make([]*types.Variable, len(delveArgs))
-	for i, v := range delveArgs {
-		args[i] = convertVariableToInfo(v)
+	return createEvalVariableResponse(debugState, mainVar, function, pkg, locals, nil)
+}
+
+// Helper functions for variable information
+func getVariableKind(v *api.Variable) string {
+	if v == nil {
+		return "unknown"
 	}
 
-	// Create the result with the variables
-	result := &ScopeVariables{
-		Local:   localVars,
-		Args:    args,
-		Package: nil, // Package variables not currently supported
+	switch v.Kind {
+	case reflect.Bool:
+		return "boolean"
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
+		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+		return "integer"
+	case reflect.Float32, reflect.Float64:
+		return "float"
+	case reflect.String:
+		return "string"
+	case reflect.Array, reflect.Slice:
+		return "array"
+	case reflect.Map:
+		return "map"
+	case reflect.Struct:
+		return "struct"
+	case reflect.Ptr:
+		return "pointer"
+	case reflect.Interface:
+		return "interface"
+	case reflect.Chan:
+		return "channel"
+	case reflect.Func:
+		return "function"
+	default:
+		return "unknown"
+	}
+}
+
+func getTypeInfo(v *api.Variable) string {
+	if v == nil {
+		return "unknown"
 	}
 
-	return result, nil
+	info := v.Type
+	if v.Kind == reflect.Ptr {
+		info += fmt.Sprintf(" (pointing to %s)", v.Type[1:]) // Remove the leading '*'
+	} else if v.Kind == reflect.Array || v.Kind == reflect.Slice {
+		info += fmt.Sprintf(" (length: %d, capacity: %d)", v.Len, v.Cap)
+	}
+
+	return info
 }
 
 // Helper function to convert Delve variables to our type

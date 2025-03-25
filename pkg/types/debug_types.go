@@ -13,6 +13,8 @@ type DebugContext struct {
 	Timestamp       time.Time          `json:"timestamp"`                 // Operation timestamp
 	LastOperation   string             `json:"lastOperation,omitempty"`   // Last debug operation performed
 	ErrorMessage    string             `json:"error,omitempty"`           // Error message if any
+	Status          string             `json:"status,omitempty"`          // Current status of the debug session
+	Summary         string             `json:"summary,omitempty"`         // Summary of the current state
 
 	// LLM-friendly additions
 	StopReason       string     `json:"stopReason,omitempty"`       // Why the program stopped, in human terms
@@ -145,14 +147,10 @@ type DebuggerOutput struct {
 // Operation-specific responses
 
 type LaunchResponse struct {
-	Status      string       `json:"status"`      // "success" or "error"
-	Context     DebugContext `json:"context"`     // Common debugging context
-	ProgramName string       `json:"programName"` // Program being debugged
-	CmdLine     []string     `json:"commandLine"` // Command line arguments
-	BuildInfo   struct {
-		Package   string `json:"package"`   // Main package
-		GoVersion string `json:"goVersion"` // Go version used
-	} `json:"buildInfo"`
+	Context  *DebugContext `json:"context"`
+	Program  string        `json:"program"`
+	Args     []string      `json:"args"`
+	ExitCode int           `json:"exitCode"`
 }
 
 type BreakpointResponse struct {
@@ -207,50 +205,38 @@ type DebuggerOutputResponse struct {
 }
 
 type AttachResponse struct {
-	Status  string       `json:"status"`  // "success" or "error"
-	Context DebugContext `json:"context"` // Common debugging context
-	Pid     int          `json:"pid"`     // Process ID that was attached to
-
-	// LLM-friendly additions
-	ProcessInfo struct {
-		Name      string   `json:"name"`      // Process name
-		StartTime string   `json:"startTime"` // Process start time
-		CmdLine   []string `json:"cmdLine"`   // Command line that started the process
-	} `json:"processInfo"`
-	Summary string `json:"summary"` // Brief description of the attach operation
+	Status  string        `json:"status"`
+	Context *DebugContext `json:"context"`
+	Pid     int           `json:"pid"`
+	Target  string        `json:"target"`
+	Process *Process      `json:"process"`
 }
 
 type DebugSourceResponse struct {
-	Status     string       `json:"status"`     // "success" or "error"
-	Context    DebugContext `json:"context"`    // Common debugging context
-	SourceFile string       `json:"sourceFile"` // Original source file path
-	BinaryPath string       `json:"binaryPath"` // Path to compiled binary
-	CmdLine    []string     `json:"cmdLine"`    // Command line arguments
-
-	// LLM-friendly additions
-	BuildInfo struct {
-		Package   string `json:"package"`   // Main package
-		GoVersion string `json:"goVersion"` // Go version used
-		BuildTime string `json:"buildTime"` // When the binary was built
-	} `json:"buildInfo"`
-	Summary string `json:"summary"` // Brief description of the debug session
+	Status      string        `json:"status"`
+	Context     *DebugContext `json:"context"`
+	SourceFile  string        `json:"sourceFile"`
+	DebugBinary string        `json:"debugBinary"`
+	Args        []string      `json:"args"`
 }
 
 type DebugTestResponse struct {
-	Status     string       `json:"status"`     // "success" or "error"
-	Context    DebugContext `json:"context"`    // Common debugging context
-	TestFile   string       `json:"testFile"`   // Test file path
-	TestName   string       `json:"testName"`   // Name of the test being debugged
-	BinaryPath string       `json:"binaryPath"` // Path to compiled test binary
-	CmdLine    []string     `json:"cmdLine"`    // Command line arguments
-	TestFlags  []string     `json:"testFlags"`  // Additional test flags
+	Status      string        `json:"status"`
+	Context     *DebugContext `json:"context"`
+	TestFile    string        `json:"testFile"`
+	TestName    string        `json:"testName"`
+	DebugBinary string        `json:"debugBinary"`
+	Process     *Process      `json:"process"`
+	TestFlags   []string      `json:"testFlags"`
+}
 
-	// LLM-friendly additions
-	TestInfo struct {
-		Package      string   `json:"package"`      // Test package name
-		TestSuite    string   `json:"testSuite"`    // Test suite name if any
-		SubTests     []string `json:"subTests"`     // List of sub-tests if any
-		Dependencies []string `json:"dependencies"` // Test dependencies
-	} `json:"testInfo"`
-	Summary string `json:"summary"` // Brief description of the test debug session
+// Process represents a debugged process with LLM-friendly additions
+type Process struct {
+	Pid         int      `json:"pid"`         // Process ID
+	Name        string   `json:"name"`        // Process name
+	CmdLine     []string `json:"cmdLine"`     // Command line arguments
+	Status      string   `json:"status"`      // Process status (running, stopped, etc.)
+	Summary     string   `json:"summary"`     // Brief description of process state
+	ExitCode    int      `json:"exitCode"`    // Exit code if process has terminated
+	ExitMessage string   `json:"exitMessage"` // Exit message if process has terminated
 }

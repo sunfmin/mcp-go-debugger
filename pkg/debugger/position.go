@@ -9,8 +9,62 @@ import (
 	"github.com/sunfmin/mcp-go-debugger/pkg/types"
 )
 
+// GetExecutionPosition returns the current execution position
+func (c *Client) GetExecutionPosition() types.DebugContext {
+	if c.client == nil {
+		context := types.DebugContext{
+			ErrorMessage: "no active debug session",
+		}
+		return context
+	}
+
+	state, err := c.client.GetState()
+	if err != nil {
+		context := types.DebugContext{
+			ErrorMessage: fmt.Sprintf("failed to get state: %v", err),
+		}
+		return context
+	}
+
+	debugState := convertToDebuggerState(state)
+	context := createDebugContext(debugState)
+	context.LastOperation = "get_position"
+
+	return context
+}
+
+// GetCurrentLocation returns the current source location
+func (c *Client) GetCurrentLocation() types.Location {
+	if c.client == nil {
+		return types.Location{
+			Summary: "no active debug session",
+		}
+	}
+
+	state, err := c.client.GetState()
+	if err != nil {
+		return types.Location{
+			Summary: fmt.Sprintf("failed to get state: %v", err),
+		}
+	}
+
+	if state.CurrentThread == nil {
+		return types.Location{
+			Summary: "no current thread",
+		}
+	}
+
+	return types.Location{
+		File:     state.CurrentThread.File,
+		Line:     state.CurrentThread.Line,
+		Function: getFunctionName(state.CurrentThread),
+		Package:  getPackageName(state.CurrentThread),
+		Summary:  fmt.Sprintf("At %s:%d in %s", state.CurrentThread.File, state.CurrentThread.Line, getFunctionName(state.CurrentThread)),
+	}
+}
+
 // GetExecutionPosition returns the current execution position (file, line, function)
-func (c *Client) GetExecutionPosition() (*types.Location, error) {
+func (c *Client) GetExecutionPositionOld() (*types.Location, error) {
 	if c.client == nil {
 		return nil, fmt.Errorf("no active debug session")
 	}

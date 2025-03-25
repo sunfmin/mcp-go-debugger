@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"sync"
 	"time"
 
 	"github.com/go-delve/delve/service/api"
@@ -25,6 +26,7 @@ type Client struct {
 	stderr     bytes.Buffer       // Buffer for captured stderr
 	outputChan chan OutputMessage // Channel for captured output
 	stopOutput chan struct{}      // Channel to signal stopping output capture
+	outputMutex sync.Mutex        // Mutex for synchronizing output buffer access
 }
 
 // NewClient creates a new Delve client wrapper

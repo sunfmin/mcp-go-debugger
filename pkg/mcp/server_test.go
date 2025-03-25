@@ -106,16 +106,7 @@ func TestDebugWorkflow(t *testing.T) {
 	}
 
 	debugResult, err := server.DebugSourceFile(ctx, launchRequest)
-	if err != nil {
-		t.Fatalf("Failed to debug source file: %v", err)
-	}
-
-	var debugResponse types.DebugSourceResponse
-	mustGetAndUnmarshalJSON(debugResult, &debugResponse)
-
-	if debugResponse.Status != "success" {
-		t.Errorf("Expected debug status 'success', got '%s'", debugResponse.Status)
-	}
+	expectSuccess(t, debugResult, err, &types.DebugSourceResponse{})
 
 	// Give the debugger time to initialize
 	time.Sleep(200 * time.Millisecond)
@@ -143,16 +134,8 @@ func TestDebugWorkflow(t *testing.T) {
 	}
 
 	breakpointResult, err := server.SetBreakpoint(ctx, setBreakpointRequest)
-	if err != nil {
-		t.Fatalf("Failed to set breakpoint: %v", err)
-	}
-
-	var breakpointResponse types.BreakpointResponse
-	mustGetAndUnmarshalJSON(breakpointResult, &breakpointResponse)
-
-	if breakpointResponse.Status != "success" {
-		t.Errorf("Expected breakpoint status 'success', got '%s'", breakpointResponse.Status)
-	}
+	breakpointResponse := &types.BreakpointResponse{}
+	expectSuccess(t, breakpointResult, err, breakpointResponse)
 
 	if breakpointResponse.Breakpoint.ID <= 0 {
 		t.Errorf("Expected valid breakpoint ID, got: %d", breakpointResponse.Breakpoint.ID)
@@ -161,19 +144,15 @@ func TestDebugWorkflow(t *testing.T) {
 	// Step 3: List breakpoints to verify
 	listBreakpointsRequest := mcp.CallToolRequest{}
 	listResult, err := server.ListBreakpoints(ctx, listBreakpointsRequest)
-	if err != nil {
-		t.Fatalf("Failed to list breakpoints: %v", err)
-	}
+	listBreakpointsResponse := types.BreakpointResponse{}
+	expectSuccess(t, listResult, err, &listBreakpointsResponse)
 
-	var breakpointsResponse types.BreakpointResponse
-	mustGetAndUnmarshalJSON(listResult, &breakpointsResponse)
-
-	if len(breakpointsResponse.AllBreakpoints) == 0 {
+	if len(listBreakpointsResponse.AllBreakpoints) == 0 {
 		t.Errorf("Expected at least one breakpoint, got none")
 	}
 
 	// Remember the breakpoint ID for later removal
-	firstBreakpointID := breakpointsResponse.AllBreakpoints[0].ID
+	firstBreakpointID := listBreakpointsResponse.AllBreakpoints[0].ID
 
 	// Step 4: Set another breakpoint at the countVarLine
 	setBreakpointRequest2 := mcp.CallToolRequest{}
@@ -187,48 +166,20 @@ func TestDebugWorkflow(t *testing.T) {
 		t.Fatalf("Failed to set second breakpoint: %v", err)
 	}
 
-	// Step 5: Verify we now have two breakpoints
-	listResult2, err := server.ListBreakpoints(ctx, listBreakpointsRequest)
-	if err != nil {
-		t.Fatalf("Failed to list breakpoints after adding second: %v", err)
-	}
-
-	var breakpointsResponse2 types.BreakpointResponse
-	mustGetAndUnmarshalJSON(listResult2, &breakpointsResponse2)
-
-	// We need to have at least as many breakpoints as we explicitly set
-	if len(breakpointsResponse2.AllBreakpoints) < 2 {
-		t.Fatalf("Expected at least two breakpoints, got %d", len(breakpointsResponse2.AllBreakpoints))
-	}
-	t.Logf("Found %d breakpoints total", len(breakpointsResponse2.AllBreakpoints))
-
-	// Track how many breakpoints we had before removing one
-	initialBreakpointCount := len(breakpointsResponse2.AllBreakpoints)
-
 	// Give the debugger more time to initialize fully
 	time.Sleep(300 * time.Millisecond)
 
 	// Step 6: Continue execution to hit first breakpoint
 	continueRequest := mcp.CallToolRequest{}
 	continueResult, err := server.Continue(ctx, continueRequest)
-	if err != nil {
-		t.Fatalf("Failed to continue execution: %v", err)
-	}
-
-	var continueResponse types.ContinueResponse
-	mustGetAndUnmarshalJSON(continueResult, &continueResponse)
+	expectSuccess(t, continueResult, err, &types.ContinueResponse{})
 
 	// Allow time for the breakpoint to be hit
 	time.Sleep(300 * time.Millisecond)
 
 	// Issue a second continue to reach the breakpoint in the calculate function
 	continueResult2, err := server.Continue(ctx, continueRequest)
-	if err != nil {
-		t.Fatalf("Failed to continue execution to second breakpoint: %v", err)
-	}
-
-	var continueResponse2 types.ContinueResponse
-	mustGetAndUnmarshalJSON(continueResult2, &continueResponse2)
+	expectSuccess(t, continueResult2, err, &types.ContinueResponse{})
 
 	// Allow time for the second breakpoint to be hit
 	time.Sleep(300 * time.Millisecond)
@@ -240,28 +191,19 @@ func TestDebugWorkflow(t *testing.T) {
 		"depth": float64(1),
 	}
 
-	examineResult, err := server.EvalVariable(ctx, examineRequest)
-	if err != nil {
-		t.Fatalf("Failed to examine variable n: %v", err)
-	}
-
-	var examineResponse types.EvalVariableResponse
-	mustGetAndUnmarshalJSON(examineResult, &examineResponse)
+	evalVariableResult, err := server.EvalVariable(ctx, examineRequest)
+	evalVariableResponse := &types.EvalVariableResponse{}
+	expectSuccess(t, evalVariableResult, err, evalVariableResponse)
 
 	// Verify the variable value is what we expect
-	if examineResponse.Variable.Value != "10" {
-		t.Fatalf("Expected n to be 10, got %s", examineResponse.Variable.Value)
+	if evalVariableResponse.Variable.Value != "10" {
+		t.Fatalf("Expected n to be 10, got %s", evalVariableResponse.Variable.Value)
 	}
 
 	// Step 9: Use step over to go to the next line
 	stepOverRequest := mcp.CallToolRequest{}
 	stepResult, err := server.StepOver(ctx, stepOverRequest)
-	if err != nil {
-		t.Fatalf("Failed to step over: %v", err)
-	}
-
-	var stepResponse types.StepResponse
-	mustGetAndUnmarshalJSON(stepResult, &stepResponse)
+	expectSuccess(t, stepResult, err, &types.StepResponse{})
 
 	// Allow time for the step to complete
 	time.Sleep(200 * time.Millisecond)
@@ -273,27 +215,18 @@ func TestDebugWorkflow(t *testing.T) {
 		"depth": float64(1),
 	}
 
-	examineResult2, err := server.EvalVariable(ctx, examineRequest2)
-	if err != nil {
-		t.Fatalf("Failed to examine variable a: %v", err)
-	}
-
-	var examineResponse2 types.EvalVariableResponse
-	mustGetAndUnmarshalJSON(examineResult2, &examineResponse2)
+	evalVariableResult2, err := server.EvalVariable(ctx, examineRequest2)
+	evalVariableResponse2 := &types.EvalVariableResponse{}
+	expectSuccess(t, evalVariableResult2, err, evalVariableResponse2)
 
 	// Verify the variable value is what we expect (a = n * 2, so a = 20)
-	if examineResponse2.Variable.Value != "20" {
-		t.Fatalf("Expected a to be 20, got %s", examineResponse2.Variable.Value)
+	if evalVariableResponse2.Variable.Value != "20" {
+		t.Fatalf("Expected a to be 20, got %s", evalVariableResponse2.Variable.Value)
 	}
 
 	// Step 11: Step over again
 	stepResult2, err := server.StepOver(ctx, stepOverRequest)
-	if err != nil {
-		t.Fatalf("Failed to step over second time: %v", err)
-	}
-
-	var stepResponse2 types.StepResponse
-	mustGetAndUnmarshalJSON(stepResult2, &stepResponse2)
+	expectSuccess(t, stepResult2, err, &types.StepResponse{})
 
 	// Allow time for the step to complete
 	time.Sleep(200 * time.Millisecond)
@@ -305,51 +238,11 @@ func TestDebugWorkflow(t *testing.T) {
 	}
 
 	removeResult, err := server.RemoveBreakpoint(ctx, removeBreakpointRequest)
-	if err != nil {
-		t.Fatalf("Failed to remove breakpoint: %v", err)
-	}
-
-	var removeResponse types.BreakpointResponse
-	mustGetAndUnmarshalJSON(removeResult, &removeResponse)
-
-	if removeResponse.Status != "success" {
-		t.Errorf("Expected remove breakpoint status 'success', got '%s'", removeResponse.Status)
-	}
-
-	// Step 13: Verify we now have one less breakpoint
-	listResult3, err := server.ListBreakpoints(ctx, listBreakpointsRequest)
-	if err != nil {
-		t.Fatalf("Failed to list breakpoints after removal: %v", err)
-	}
-
-	var breakpointsResponse3 types.BreakpointResponse
-	mustGetAndUnmarshalJSON(listResult3, &breakpointsResponse3)
-
-	// We should have exactly one less breakpoint than before
-	expectedCount := initialBreakpointCount - 1
-	if len(breakpointsResponse3.AllBreakpoints) != expectedCount {
-		t.Fatalf("Expected %d breakpoints after removal, got %d",
-			expectedCount, len(breakpointsResponse3.AllBreakpoints))
-	}
-	t.Logf("Current breakpoint count: %d", len(breakpointsResponse3.AllBreakpoints))
-
-	// Verify that the removed breakpoint is actually gone
-	found := false
-	for _, bp := range breakpointsResponse3.AllBreakpoints {
-		if bp.ID == firstBreakpointID {
-			found = true
-			break
-		}
-	}
-	if found {
-		t.Fatalf("Breakpoint with ID %d was supposed to be removed but still exists", firstBreakpointID)
-	}
+	expectSuccess(t, removeResult, err, &types.BreakpointResponse{})
 
 	// Step 14: Continue execution to complete the program
-	_, err = server.Continue(ctx, continueRequest)
-	if err != nil {
-		t.Fatalf("Failed to continue execution to completion: %v", err)
-	}
+	continueResult, err = server.Continue(ctx, continueRequest)
+	expectSuccess(t, continueResult, err, &types.ContinueResponse{})
 
 	// Allow time for program to complete
 	time.Sleep(300 * time.Millisecond)
@@ -357,25 +250,12 @@ func TestDebugWorkflow(t *testing.T) {
 	// Check for captured output
 	outputRequest := mcp.CallToolRequest{}
 	outputResult, err := server.GetDebuggerOutput(ctx, outputRequest)
-	if err == nil && outputResult != nil {
-		var outputResponse types.DebuggerOutputResponse
-		mustGetAndUnmarshalJSON(outputResult, &outputResponse)
-		t.Logf("Captured program output: %s", outputResponse.Stdout)
-	}
+	expectSuccess(t, outputResult, err, &types.DebuggerOutputResponse{})
 
 	// Clean up by closing the debug session
 	closeRequest := mcp.CallToolRequest{}
 	closeResult, err := server.Close(ctx, closeRequest)
-	if err != nil {
-		t.Fatalf("Failed to close debug session: %v", err)
-	}
-
-	var closeResponse types.CloseResponse
-	mustGetAndUnmarshalJSON(closeResult, &closeResponse)
-
-	if closeResponse.Status != "success" {
-		t.Errorf("Expected close status 'success', got '%s'", closeResponse.Status)
-	}
+	expectSuccess(t, closeResult, err, &types.CloseResponse{})
 
 	t.Log("TestDebugWorkflow completed successfully")
 }

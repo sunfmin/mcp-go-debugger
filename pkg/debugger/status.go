@@ -20,48 +20,56 @@ type Status struct {
 	ErrorMessage    string `json:"errorMessage,omitempty"`
 }
 
-// GetStatus returns the current status of the debugger
-func (c *Client) GetStatus() (*Status, error) {
-	logger.Debug("Getting debugger status")
-
-	status := &Status{
-		Connected: c.client != nil,
-	}
-
-	// If not connected, return early
-	if !status.Connected {
-		status.ErrorMessage = "Not connected to any debug session"
-		return status, nil
-	}
-
-	// Get the current state
-	state, err := c.client.GetState()
-	if err != nil {
-		status.ErrorMessage = fmt.Sprintf("Error getting debugger state: %v", err)
-		return status, err
-	}
-
-	// Update status with state information
-	status.Running = state.Running
-	status.Exited = state.Exited
-
-	if status.Exited {
-		status.ExitStatus = state.ExitStatus
-	}
-
-	// Get current position information if not running and not exited
-	if !status.Running && !status.Exited && state.CurrentThread != nil {
-		status.CurrentFile = state.CurrentThread.File
-		status.CurrentLine = state.CurrentThread.Line
-		if state.CurrentThread.Function != nil {
-			status.CurrentFunction = state.CurrentThread.Function.Name()
+// GetStatus returns the current status of the debug session
+func (c *Client) GetStatus() types.DebugContext {
+	if c.client == nil {
+		return types.DebugContext{
+			Timestamp:     time.Now(),
+			LastOperation: "status",
+			ErrorMessage:  "no active debug session",
 		}
 	}
 
-	logger.Debug("Debugger status: connected=%v, running=%v, exited=%v",
-		status.Connected, status.Running, status.Exited)
+	state, err := c.client.GetState()
+	if err != nil {
+		logger.Debug("Failed to get state: %v", err)
+		return types.DebugContext{
+			Timestamp:     time.Now(),
+			LastOperation: "status",
+			ErrorMessage:  fmt.Sprintf("failed to get state: %v", err),
+		}
+	}
 
-	return status, nil
+	debugState := convertToDebuggerState(state)
+	context := createDebugContext(debugState)
+	context.LastOperation = "status"
+	return context
+}
+
+// Ping checks if the debug session is responsive
+func (c *Client) Ping() types.DebugContext {
+	if c.client == nil {
+		return types.DebugContext{
+			Timestamp:     time.Now(),
+			LastOperation: "ping",
+			ErrorMessage:  "no active debug session",
+		}
+	}
+
+	state, err := c.client.GetState()
+	if err != nil {
+		logger.Debug("Failed to get state: %v", err)
+		return types.DebugContext{
+			Timestamp:     time.Now(),
+			LastOperation: "ping",
+			ErrorMessage:  fmt.Sprintf("failed to get state: %v", err),
+		}
+	}
+
+	debugState := convertToDebuggerState(state)
+	context := createDebugContext(debugState)
+	context.LastOperation = "ping"
+	return context
 }
 
 // GetDebuggerState returns a complete debugger state with LLM-friendly information
@@ -126,25 +134,6 @@ func (c *Client) GetDebuggerState() (*types.DebuggerState, error) {
 	state.Summary = generateStateSummary(state)
 
 	return state, nil
-}
-
-// Ping is a simple function to check if the debugger is responsive
-// Useful for CI/CD testing or connection verification
-func (c *Client) Ping() (string, error) {
-	logger.Debug("Ping received, checking debugger status")
-
-	status, err := c.GetStatus()
-	if err != nil {
-		return "", fmt.Errorf("error getting debugger status: %v", err)
-	}
-
-	response := fmt.Sprintf("Pong! Debugger is %s",
-		connectionStatusString(status))
-
-	// Include timestamp
-	response += fmt.Sprintf(" [%s]", time.Now().Format(time.RFC3339))
-
-	return response, nil
 }
 
 // Helper function to generate a nice status string

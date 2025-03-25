@@ -2,6 +2,8 @@ package debugger
 
 import (
 	"fmt"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -182,23 +184,18 @@ func generateStateSummary(state *types.DebuggerState) string {
 	return "Process is stopped"
 }
 
-// createDebugContext creates a DebugContext from a DebuggerState
+// createDebugContext creates a debug context from a state
 func createDebugContext(state *types.DebuggerState) types.DebugContext {
 	context := types.DebugContext{
-		Timestamp: time.Now(),
+		Timestamp:     time.Now(),
+		LastOperation: "",
 	}
 
-	if state == nil {
-		context.OperationSummary = "debugger state unknown"
-		return context
+	if state != nil {
+		context.DelveState = state.DelveState
+		context.Status = getStateStatus(state.DelveState)
+		context.Summary = generateStateSummary(state)
 	}
-
-	context.DelveState = state.DelveState
-	context.CurrentPosition = getCurrentPosition(state)
-	context.StopReason = state.StateReason
-	context.Threads = convertThreads(state.Threads)
-	context.Goroutine = state.SelectedGoroutine
-	context.OperationSummary = state.Summary
 
 	return context
 }
@@ -244,8 +241,8 @@ func createContinueResponse(state *types.DebuggerState, err error) types.Continu
 			bp := state.DelveState.CurrentThread.Breakpoint
 			hitBreakpoint = &types.Breakpoint{
 				DelveBreakpoint: bp,
-				ID:             bp.ID,
-				Status:         getBreakpointStatus(bp),
+				ID:              bp.ID,
+				Status:          getBreakpointStatus(bp),
 				Location: types.Location{
 					File:     bp.File,
 					Line:     bp.Line,
@@ -317,4 +314,183 @@ func getCurrentLocation(state *api.DebuggerState) *types.Location {
 		Package:  getPackageName(state.CurrentThread),
 		Summary:  fmt.Sprintf("At %s:%d in %s", state.CurrentThread.File, state.CurrentThread.Line, getFunctionName(state.CurrentThread)),
 	}
+}
+
+// createBreakpointResponse creates a BreakpointResponse from a Breakpoint and state
+func createBreakpointResponse(state *types.DebuggerState, breakpoint *types.Breakpoint, allBreakpoints []types.Breakpoint, scopeVars []types.Variable, err error) types.BreakpointResponse {
+	context := createDebugContext(state)
+	if err != nil {
+		context.ErrorMessage = err.Error()
+		return types.BreakpointResponse{
+			Status:  "error",
+			Context: context,
+		}
+	}
+
+	return types.BreakpointResponse{
+		Status:         "success",
+		Context:        context,
+		Breakpoint:     *breakpoint,
+		AllBreakpoints: allBreakpoints,
+		ScopeVariables: scopeVars,
+	}
+}
+
+// createDebuggerOutputResponse creates a DebuggerOutputResponse
+func createDebuggerOutputResponse(state *types.DebuggerState, stdout, stderr string, err error) types.DebuggerOutputResponse {
+	context := createDebugContext(state)
+	if err != nil {
+		context.ErrorMessage = err.Error()
+		return types.DebuggerOutputResponse{
+			Status:  "error",
+			Context: context,
+		}
+	}
+
+	summary := "No output captured"
+	if stdout != "" || stderr != "" {
+		summary = fmt.Sprintf("Captured %d bytes of stdout and %d bytes of stderr", len(stdout), len(stderr))
+	}
+
+	return types.DebuggerOutputResponse{
+		Status:        "success",
+		Context:       context,
+		Stdout:        stdout,
+		Stderr:        stderr,
+		OutputSummary: summary,
+	}
+}
+
+// createLaunchResponse creates a response for the launch command
+func createLaunchResponse(state *types.DebuggerState, program string, args []string, err error) types.LaunchResponse {
+	context := createDebugContext(state)
+	context.LastOperation = "launch"
+
+	if err != nil {
+		context.ErrorMessage = err.Error()
+	}
+
+	return types.LaunchResponse{
+		Context:  &context,
+		Program:  program,
+		Args:     args,
+		ExitCode: 0,
+	}
+}
+
+// createAttachResponse creates a response for the attach command
+func createAttachResponse(state *types.DebuggerState, pid int, target string, process *types.Process, err error) types.AttachResponse {
+	context := createDebugContext(state)
+	context.LastOperation = "attach"
+
+	if err != nil {
+		context.ErrorMessage = err.Error()
+	}
+
+	return types.AttachResponse{
+		Status:  "success",
+		Context: &context,
+		Pid:     pid,
+		Target:  target,
+		Process: process,
+	}
+}
+
+// createCloseResponse creates a CloseResponse
+func createCloseResponse(state *types.DebuggerState, exitCode int, err error) types.CloseResponse {
+	context := createDebugContext(state)
+	if err != nil {
+		context.ErrorMessage = err.Error()
+		return types.CloseResponse{
+			Status:  "error",
+			Context: context,
+		}
+	}
+
+	return types.CloseResponse{
+		Status:   "success",
+		Context:  context,
+		ExitCode: exitCode,
+		Summary:  fmt.Sprintf("Debug session closed with exit code %d", exitCode),
+	}
+}
+
+// createEvalVariableResponse creates an EvalVariableResponse
+func createEvalVariableResponse(state *types.DebuggerState, variable *types.Variable, function, pkg string, locals []string, err error) types.EvalVariableResponse {
+	context := createDebugContext(state)
+	if err != nil {
+		context.ErrorMessage = err.Error()
+		return types.EvalVariableResponse{
+			Status:  "error",
+			Context: context,
+		}
+	}
+
+	return types.EvalVariableResponse{
+		Status:   "success",
+		Context:  context,
+		Variable: *variable,
+		ScopeInfo: struct {
+			Function string   "json:\"function\""
+			Package  string   "json:\"package\""
+			Locals   []string "json:\"locals\""
+		}{
+			Function: function,
+			Package:  pkg,
+			Locals:   locals,
+		},
+	}
+}
+
+// createDebugSourceResponse creates a response for the debug source command
+func createDebugSourceResponse(state *types.DebuggerState, sourceFile string, debugBinary string, args []string, err error) types.DebugSourceResponse {
+	context := createDebugContext(state)
+	context.LastOperation = "debug_source"
+
+	if err != nil {
+		context.ErrorMessage = err.Error()
+	}
+
+	return types.DebugSourceResponse{
+		Status:      "success",
+		Context:     &context,
+		SourceFile:  sourceFile,
+		DebugBinary: debugBinary,
+		Args:        args,
+	}
+}
+
+// createDebugTestResponse creates a response for the debug test command
+func createDebugTestResponse(state *types.DebuggerState, testFile string, testName string, debugBinary string, process *types.Process, testFlags []string, err error) types.DebugTestResponse {
+	context := createDebugContext(state)
+	context.LastOperation = "debug_test"
+
+	if err != nil {
+		context.ErrorMessage = err.Error()
+	}
+
+	return types.DebugTestResponse{
+		Status:      "success",
+		Context:     &context,
+		TestFile:    testFile,
+		TestName:    testName,
+		DebugBinary: debugBinary,
+		Process:     process,
+		TestFlags:   testFlags,
+	}
+}
+
+// Helper functions for response creation
+func getProgramPackage(file string) string {
+	// Simple implementation - in real code this would parse the Go file
+	return filepath.Base(filepath.Dir(file))
+}
+
+func getGoVersion() string {
+	return runtime.Version()
+}
+
+func getTestSuite(testFile string) string {
+	// Simple implementation - in real code this would parse the test file
+	return filepath.Base(testFile)
 }
