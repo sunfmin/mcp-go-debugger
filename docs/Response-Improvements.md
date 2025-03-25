@@ -15,153 +15,281 @@ This document outlines research and improvements for the MCP Go Debugger tool re
 
 ### Response Types
 
-```go
-// CommonContext provides shared context across all debug responses
-type CommonContext struct {
-    DebuggerState   *api.DebuggerState `json:"debuggerState"`        // Current debugger state from Delve
-    CurrentPosition *Location          `json:"currentPosition,omitempty"`  // Current execution position
-    Timestamp       time.Time         `json:"timestamp"`                 // Operation timestamp
-    LastOperation   string            `json:"lastOperation,omitempty"`   // Last debug operation performed
-    ErrorMessage    string            `json:"error,omitempty"`          // Error message if any
-    
-    // LLM-friendly additions
-    StopReason      string            `json:"stopReason,omitempty"`     // Why the program stopped, in human terms
-    ThreadStates    []ThreadState     `json:"threadStates,omitempty"`   // Human-readable thread states
-    GoroutineState  *GoroutineState  `json:"goroutineState,omitempty"` // Current goroutine state in human terms
-    OperationSummary string          `json:"operationSummary,omitempty"` // Summary of current operation for LLM
+Example JSON responses for each type:
+
+```json
+// Debug Context Example
+{
+    "currentPosition": {
+        "file": "/path/to/main.go",
+        "line": 42,
+        "function": "main.processRequest",
+        "package": "main",
+        "summary": "Inside main.processRequest handling HTTP request"
+    },
+    "timestamp": "2024-03-24T15:04:05Z",
+    "lastOperation": "step_over",
+    "errorMessage": "",
+    "stopReason": "breakpoint hit in main.processRequest",
+    "threads": [
+        {
+            "id": 1,
+            "status": "stopped at breakpoint",
+            "location": {
+                "file": "/path/to/main.go",
+                "line": 42,
+                "function": "main.processRequest",
+                "package": "main",
+                "summary": "Processing HTTP request"
+            },
+            "active": true,
+            "summary": "Main thread stopped at breakpoint in request handler"
+        }
+    ],
+    "goroutine": {
+        "id": 1,
+        "status": "running",
+        "waitReason": "waiting for network response",
+        "location": {
+            "file": "/path/to/main.go",
+            "line": 42,
+            "function": "main.processRequest",
+            "package": "main",
+            "summary": "Processing HTTP request"
+        },
+        "createdAt": {
+            "file": "/path/to/main.go",
+            "line": 30,
+            "function": "main.startWorker",
+            "package": "main",
+            "summary": "Worker goroutine creation point"
+        },
+        "userLocation": {
+            "file": "/path/to/main.go",
+            "line": 42,
+            "function": "main.processRequest",
+            "package": "main",
+            "summary": "User code location"
+        },
+        "summary": "Main worker goroutine processing HTTP request"
+    },
+    "operationSummary": "Stepped over function call in main.processRequest"
 }
 
-// ThreadState provides LLM-friendly thread state information
-type ThreadState struct {
-    ID       int      `json:"id"`
-    Status   string   `json:"status"`          // Thread status in human terms
-    Location Location `json:"location"`        // Current location
-    Active   bool     `json:"active"`         // Whether this thread is active
+// Variable Example
+{
+    "name": "request",
+    "value": "*http.Request{Method:\"GET\", URL:\"/api/users\"}",
+    "type": "*http.Request",
+    "summary": "HTTP GET request for /api/users endpoint",
+    "scope": "local",
+    "kind": "pointer",
+    "typeInfo": "Pointer to HTTP request structure",
+    "references": ["context", "response", "params"]
 }
 
-// GoroutineState provides LLM-friendly goroutine state information
-type GoroutineState struct {
-    ID         int      `json:"id"`
-    Status     string   `json:"status"`         // Status in human terms
-    WaitReason string   `json:"waitReason,omitempty"` // Why goroutine is waiting
-    Location   Location `json:"location"`       // Current location
-    CreatedAt  Location `json:"createdAt,omitempty"` // Where the goroutine was created
-    UserLoc    Location `json:"userLocation,omitempty"` // User-level location (stripped of runtime calls)
+// Breakpoint Example
+{
+    "id": 1,
+    "status": "enabled",
+    "location": {
+        "file": "/path/to/main.go",
+        "line": 42,
+        "function": "main.processRequest",
+        "package": "main",
+        "summary": "Start of request processing"
+    },
+    "description": "Break before processing API request",
+    "variables": ["request", "response", "err"],
+    "package": "main",
+    "condition": "request.Method == \"POST\"",
+    "hitCount": 5,
+    "lastHitInfo": "Last hit on POST /api/users at 15:04:05"
 }
 
-// Location represents a source code location
-type Location struct {
-    File     string `json:"file"`
-    Line     int    `json:"line"`
-    Function string `json:"function,omitempty"`
-    Package  string `json:"package,omitempty"`   // Package name for better context
+// Function Example
+{
+    "name": "processRequest",
+    "signature": "func processRequest(w http.ResponseWriter, r *http.Request) error",
+    "parameters": ["w http.ResponseWriter", "r *http.Request"],
+    "returnType": "error",
+    "package": "main",
+    "description": "HTTP request handler for API endpoints",
+    "location": {
+        "file": "/path/to/main.go",
+        "line": 42,
+        "function": "main.processRequest",
+        "package": "main",
+        "summary": "Main request processing function"
+    }
 }
 
-// Variable represents a program variable with LLM-friendly additions
-type Variable struct {
-    // Embed Delve's Variable
-    *api.Variable
-
-    // LLM-friendly additions
-    Summary  string     `json:"summary"`        // Brief description for LLM
-    Scope    string     `json:"scope"`         // Variable scope (local, global, etc)
-    Kind     string     `json:"kind"`          // High-level kind description
+// DebuggerState Example
+{
+    "status": "stopped at breakpoint",
+    "currentThread": {
+        "id": 1,
+        "status": "stopped at breakpoint",
+        "location": {
+            "file": "/path/to/main.go",
+            "line": 42,
+            "function": "main.processRequest",
+            "package": "main",
+            "summary": "Processing HTTP request"
+        },
+        "active": true,
+        "summary": "Main thread stopped at breakpoint"
+    },
+    "currentGoroutine": {
+        "id": 1,
+        "status": "running",
+        "location": {
+            "file": "/path/to/main.go",
+            "line": 42,
+            "function": "main.processRequest",
+            "package": "main",
+            "summary": "Processing HTTP request"
+        },
+        "summary": "Main goroutine processing request"
+    },
+    "reason": "Hit breakpoint in request handler",
+    "nextSteps": [
+        "examine request variable",
+        "step into processRequest",
+        "continue execution"
+    ],
+    "summary": "Program paused at start of request processing"
 }
 
-// Breakpoint represents a breakpoint with LLM-friendly additions
-type Breakpoint struct {
-    // Embed Delve's Breakpoint
-    *api.Breakpoint
-
-    // LLM-friendly additions
-    Status       string   `json:"status"`          // Enabled/Disabled/etc in human terms
-    Description  string   `json:"description"`     // Human-readable description
-    Variables    []string `json:"variables,omitempty"` // Variables in scope
-    Package      string   `json:"package"`         // Package where breakpoint is set
+// Launch Response Example
+{
+    "status": "success",
+    "context": { /* DebugContext object as shown above */ },
+    "programName": "./myapp",
+    "cmdLine": ["./myapp", "--debug"],
+    "buildInfo": {
+        "package": "main",
+        "goVersion": "go1.21.0"
+    }
 }
 
-// Operation-specific responses
-
-type LaunchResponse struct {
-    Status         string         `json:"status"`           // "success" or "error"
-    Context        CommonContext  `json:"context"`          // Common debugging context
-    ProgramName    string        `json:"programName"`      // Program being debugged
-    CmdLine        []string      `json:"commandLine"`      // Command line arguments
-    BuildInfo      struct {
-        Package   string `json:"package"`   // Main package
-        GoVersion string `json:"goVersion"` // Go version used
-    } `json:"buildInfo"`
+// Breakpoint Response Example
+{
+    "status": "success",
+    "context": { /* DebugContext object */ },
+    "breakpoint": { /* Breakpoint object as shown above */ },
+    "allBreakpoints": [
+        { /* Breakpoint object */ }
+    ],
+    "scopeVariables": [
+        { /* Variable object */ }
+    ]
 }
 
-type BreakpointResponse struct {
-    Status         string         `json:"status"`
-    Context        CommonContext  `json:"context"`
-    Breakpoint     Breakpoint    `json:"breakpoint"`       // The affected breakpoint
-    AllBreakpoints []Breakpoint  `json:"allBreakpoints"`   // All current breakpoints
-    ScopeVariables []Variable    `json:"scopeVariables"`   // Variables in scope at breakpoint
+// Step Response Example
+{
+    "status": "success",
+    "context": { /* DebugContext object */ },
+    "stepType": "over",
+    "fromLocation": {
+        "file": "/path/to/main.go",
+        "line": 42,
+        "function": "main.processRequest",
+        "package": "main",
+        "summary": "Before function call"
+    },
+    "toLocation": {
+        "file": "/path/to/main.go",
+        "line": 43,
+        "function": "main.processRequest",
+        "package": "main",
+        "summary": "After function call"
+    },
+    "changedVars": [
+        { /* Variable object showing changes */ }
+    ]
 }
 
-type StepResponse struct {
-    Status          string         `json:"status"`
-    Context         CommonContext  `json:"context"`
-    StepType        string        `json:"stepType"`         // "into", "over", or "out"
-    FromLocation    Location      `json:"from"`             // Starting location
-    ToLocation     Location      `json:"to"`               // Ending location
-    ChangedVars    []Variable    `json:"changedVars"`      // Variables that changed during step
+// Examine Variable Response Example
+{
+    "status": "success",
+    "context": { /* DebugContext object */ },
+    "variable": { /* Variable object as shown above */ },
+    "scopeInfo": {
+        "function": "main.processRequest",
+        "package": "main",
+        "locals": ["request", "response", "err"]
+    }
 }
 
-type ExamineVarResponse struct {
-    Status          string         `json:"status"`
-    Context         CommonContext  `json:"context"`
-    Variable        Variable       `json:"variable"`        // The examined variable
-    ScopeInfo      struct {
-        Function string    `json:"function"`  // Function where variable is located
-        Package  string    `json:"package"`   // Package where variable is located
-        Locals   []string  `json:"locals"`    // Names of other local variables
-    } `json:"scopeInfo"`
+// Continue Response Example
+{
+    "status": "success",
+    "context": { /* DebugContext object */ },
+    "stoppedAt": {
+        "file": "/path/to/main.go",
+        "line": 50,
+        "function": "main.processRequest",
+        "package": "main",
+        "summary": "After processing request"
+    },
+    "stopReason": "breakpoint hit",
+    "hitBreakpoint": { /* Breakpoint object */ }
 }
 
-type ContinueResponse struct {
-    Status          string         `json:"status"`
-    Context         CommonContext  `json:"context"`
-    StoppedAt       *Location     `json:"stoppedAt,omitempty"`  // Location where execution stopped
-    StopReason      string        `json:"stopReason,omitempty"` // Why execution stopped
-    HitBreakpoint   *Breakpoint   `json:"hitBreakpoint,omitempty"` // Breakpoint that was hit
+// Close Response Example
+{
+    "status": "success",
+    "context": { /* DebugContext object */ },
+    "exitCode": 0,
+    "summary": "Debug session ended normally after processing 100 requests"
 }
 
-type CloseResponse struct {
-    Status          string         `json:"status"`
-    Context        CommonContext  `json:"context"`
-    ExitCode       int           `json:"exitCode"`         // Program exit code
-    Summary        string        `json:"summary"`          // Session summary for LLM
-}
-
-type DebuggerOutputResponse struct {
-    Status          string         `json:"status"`
-    Context        CommonContext  `json:"context"`
-    Stdout         string        `json:"stdout"`           // Captured standard output
-    Stderr         string        `json:"stderr"`           // Captured standard error
-    OutputSummary  string        `json:"outputSummary"`   // Brief summary of output for LLM
+// Debugger Output Response Example
+{
+    "status": "success",
+    "context": { /* DebugContext object */ },
+    "stdout": "Processing request ID: 1\nRequest completed successfully\n",
+    "stderr": "",
+    "outputSummary": "Successfully processed request with ID 1"
 }
 ```
 
+Key Features of the JSON Format:
+1. Internal Delve data stored in non-JSON fields
+2. All exposed fields are human-readable and LLM-friendly
+3. Consistent structure with clear field names
+4. Rich contextual information in summaries
+5. Cross-references between related data
+6. Temporal information about operations
+7. Complete debugging context
+
+The JSON format makes it easy to:
+1. Parse and process debugging information
+2. Generate human-readable summaries
+3. Track debugging state changes
+4. Understand the context of operations
+5. Follow program execution flow
+6. Monitor variable changes
+7. Track breakpoint interactions
+
 Key Changes:
-1. Using Delve's `api.DebuggerState` directly in CommonContext
-2. Moved LLM-friendly state information to CommonContext
-3. Created separate ThreadState and GoroutineState types for LLM-friendly information
-4. Embedded Delve's Variable and Breakpoint types and extended them with LLM-friendly fields
-5. Simplified the overall structure while maintaining all LLM-helpful information
-6. Removed redundant types that duplicated Delve's functionality
-7. Added clear separation between Delve's core functionality and LLM enhancements
+1. Removed embedded Delve types in favor of internal fields
+2. Consistent naming across all types
+3. Added summaries to all relevant types
+4. Enhanced cross-referencing between related data
+5. Improved human-readable descriptions
+6. Better temporal information
+7. More consistent structure across all types
 
 Benefits:
-1. Better compatibility with Delve's API
-2. Clearer separation of concerns
-3. Easier to maintain as Delve evolves
-4. Still provides all the LLM-friendly context and summaries
-5. Reduced duplication of types
-6. More efficient state management
-7. Clearer relationship with Delve's core functionality
+1. Cleaner JSON output without internal Delve data
+2. More consistent and predictable structure
+3. Better readability for humans and LLMs
+4. Maintained access to Delve functionality
+5. Improved debugging context
+6. Better relationship tracking
+7. Enhanced temporal awareness
 
 ## Modified Tools
 
@@ -192,10 +320,10 @@ The following tools will be simplified or removed as their functionality is now 
 
 ## Implementation Notes
 
-1. All response types should implement proper JSON marshaling/unmarshaling
-2. Use pointer types for optional fields to save memory
-3. Consider implementing custom marshaling for complex types
-4. Use proper error handling and logging
-5. Consider adding validation for response structures
-6. Implement proper cleanup for resources
-7. Add proper documentation for all types and fields
+1. All types store Delve data in internal fields with `json:"-"` tag
+2. Use pointer types for optional fields
+3. Implement conversion functions between Delve and LLM-friendly types
+4. Maintain consistent naming conventions
+5. Include rich contextual information
+6. Preserve all debugging capabilities
+7. Focus on human-readable output
