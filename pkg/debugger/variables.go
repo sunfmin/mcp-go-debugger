@@ -2,11 +2,13 @@ package debugger
 
 import (
 	"fmt"
-	"strconv"
+	"reflect"
+	"strings"
 	"time"
 
 	"github.com/go-delve/delve/service/api"
 	"github.com/sunfmin/mcp-go-debugger/pkg/logger"
+	"github.com/sunfmin/mcp-go-debugger/pkg/types"
 )
 
 // VariableInfo represents information about a variable
@@ -20,15 +22,15 @@ type VariableInfo struct {
 	Length   int64          `json:"length,omitempty"`
 }
 
-// ScopeVariables represents all variables in the current scope
+// ScopeVariables holds variables from different scopes
 type ScopeVariables struct {
-	Local   []api.Variable `json:"local"`
-	Args    []api.Variable `json:"args"`
-	Package []api.Variable `json:"package"`
+	Local   []*types.Variable `json:"local"`
+	Args    []*types.Variable `json:"args"`
+	Package []*types.Variable `json:"package,omitempty"`
 }
 
-// ExamineVariable evaluates and returns information about a variable
-func (c *Client) ExamineVariable(name string, depth int) (*api.Variable, error) {
+// EvalVariable evaluates and returns information about a variable
+func (c *Client) EvalVariable(name string, depth int) (*types.Variable, error) {
 	if c.client == nil {
 		return nil, fmt.Errorf("no active debug session")
 	}
@@ -64,7 +66,7 @@ func (c *Client) ExamineVariable(name string, depth int) (*api.Variable, error) 
 		state.CurrentThread.File, state.CurrentThread.Line)
 
 	// Evaluate the variable
-	variable, err := c.client.EvalVariable(api.EvalScope{GoroutineID: goroutineID, Frame: 0}, name, api.LoadConfig{
+	delveVar, err := c.client.EvalVariable(api.EvalScope{GoroutineID: goroutineID, Frame: 0}, name, api.LoadConfig{
 		FollowPointers:     true,
 		MaxVariableRecurse: depth,
 		MaxStringLen:       100,
@@ -76,7 +78,12 @@ func (c *Client) ExamineVariable(name string, depth int) (*api.Variable, error) 
 		return nil, fmt.Errorf("failed to examine variable: %v", err)
 	}
 
-	return variable, nil
+	// Convert to our type
+	if delveVar == nil {
+		return nil, fmt.Errorf("variable not found")
+	}
+	result := convertVariableToInfo(*delveVar)
+	return result, nil
 }
 
 // ListScopeVariables lists all variables in the current scope (local, args, and package)
@@ -128,53 +135,158 @@ func (c *Client) ListScopeVariables(depth int) (*ScopeVariables, error) {
 
 	// Get local variables
 	logger.Debug("Getting local variables")
-	localVars, err := c.client.ListLocalVariables(scope, loadConfig)
+	delveLocalVars, err := c.client.ListLocalVariables(scope, loadConfig)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list local variables: %v", err)
 	}
 
 	// Get function arguments
 	logger.Debug("Getting function arguments")
-	args, err := c.client.ListFunctionArgs(scope, loadConfig)
+	delveArgs, err := c.client.ListFunctionArgs(scope, loadConfig)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list function arguments: %v", err)
 	}
 
+	// Convert variables to our types
+	localVars := make([]*types.Variable, len(delveLocalVars))
+	for i, v := range delveLocalVars {
+		localVars[i] = convertVariableToInfo(v)
+	}
+
+	args := make([]*types.Variable, len(delveArgs))
+	for i, v := range delveArgs {
+		args[i] = convertVariableToInfo(v)
+	}
+
 	// Create the result with the variables
 	result := &ScopeVariables{
-		Local: localVars,
-		Args:  args,
-		Package: nil,
+		Local:   localVars,
+		Args:    args,
+		Package: nil, // Package variables not currently supported
 	}
 
 	return result, nil
 }
 
-// convertVariableToInfo converts a Delve API variable to our VariableInfo structure
-func convertVariableToInfo(v *api.Variable, depth int) *VariableInfo {
-	if v == nil {
-		return nil
+// Helper function to convert Delve variables to our type
+func convertVariableToInfo(v api.Variable) *types.Variable {
+	result := &types.Variable{
+		DelveVar: &v,
+		Name:     v.Name,
+		Value:    v.Value,
+		Type:     v.Type,
+		Summary:  generateVariableSummary(v),
+		Scope:    "local", // Default to local scope
+		Kind:     v.Kind.String(),
+		TypeInfo: generateTypeInfo(v),
 	}
 
-	info := &VariableInfo{
-		Name:    v.Name,
-		Type:    v.Type,
-		Value:   v.Value,
-		Address: v.Addr,
-		Kind:    strconv.Itoa(int(v.Kind)),
-		Length:  v.Len,
+	// Add references if this is a pointer or has children
+	if v.Kind == reflect.Ptr || len(v.Children) > 0 {
+		result.References = extractReferences(v)
 	}
 
-	// If we have children and depth allows, process them
-	if depth > 0 && len(v.Children) > 0 {
-		info.Children = make([]VariableInfo, 0, len(v.Children))
+	return result
+}
+
+// Helper function to generate a human-readable summary of a variable
+func generateVariableSummary(v api.Variable) string {
+	switch v.Kind {
+	case reflect.Bool:
+		return fmt.Sprintf("Boolean value: %s", v.Value)
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		return fmt.Sprintf("Integer value: %s", v.Value)
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+		return fmt.Sprintf("Unsigned integer value: %s", v.Value)
+	case reflect.Float32, reflect.Float64:
+		return fmt.Sprintf("Floating point value: %s", v.Value)
+	case reflect.String:
+		return fmt.Sprintf("String value: %s", v.Value)
+	case reflect.Ptr:
+		if v.Children == nil || len(v.Children) == 0 {
+			return fmt.Sprintf("Nil pointer of type %s", v.Type)
+		}
+		return fmt.Sprintf("Pointer to %s", v.Type)
+	case reflect.Array, reflect.Slice:
+		return fmt.Sprintf("%s with %d elements", v.Type, v.Len)
+	case reflect.Map:
+		return fmt.Sprintf("Map with %d entries", v.Len)
+	case reflect.Struct:
+		return fmt.Sprintf("Struct of type %s", v.Type)
+	case reflect.Interface:
+		return fmt.Sprintf("Interface of type %s", v.Type)
+	case reflect.Chan:
+		return fmt.Sprintf("Channel of type %s", v.Type)
+	case reflect.Func:
+		return fmt.Sprintf("Function %s", v.Value)
+	default:
+		return fmt.Sprintf("Variable of type %s", v.Type)
+	}
+}
+
+// Helper function to generate detailed type information
+func generateTypeInfo(v api.Variable) string {
+	switch v.Kind {
+	case reflect.Struct:
+		return fmt.Sprintf("Struct with fields: %s", getStructFields(v))
+	case reflect.Map:
+		return fmt.Sprintf("Map[%s]%s", getMapKeyType(v), getMapValueType(v))
+	case reflect.Array, reflect.Slice:
+		return fmt.Sprintf("Array/Slice of %s with length %d", v.Type, v.Len)
+	case reflect.Chan:
+		return fmt.Sprintf("Channel of %s with %d buffer size", v.Type, v.Len)
+	case reflect.Ptr:
+		if v.Children == nil || len(v.Children) == 0 {
+			return "Nil pointer"
+		}
+		return fmt.Sprintf("Pointer to %s at address %s", v.Type, v.Value)
+	default:
+		return v.Type
+	}
+}
+
+// Helper function to extract references from a variable
+func extractReferences(v api.Variable) []string {
+	refs := make([]string, 0)
+
+	if v.Kind == reflect.Ptr {
+		refs = append(refs, fmt.Sprintf("Points to address %s", v.Value))
+	}
+
+	if len(v.Children) > 0 {
 		for _, child := range v.Children {
-			childInfo := convertVariableToInfo(&child, depth-1)
-			if childInfo != nil {
-				info.Children = append(info.Children, *childInfo)
-			}
+			refs = append(refs, fmt.Sprintf("%s: %s", child.Name, child.Type))
 		}
 	}
 
-	return info
-} 
+	return refs
+}
+
+// Helper function to get struct field information
+func getStructFields(v api.Variable) string {
+	if len(v.Children) == 0 {
+		return "none"
+	}
+
+	fields := make([]string, len(v.Children))
+	for i, field := range v.Children {
+		fields[i] = fmt.Sprintf("%s %s", field.Name, field.Type)
+	}
+	return strings.Join(fields, ", ")
+}
+
+// Helper function to get map key type
+func getMapKeyType(v api.Variable) string {
+	if len(v.Children) == 0 {
+		return "unknown"
+	}
+	return v.Children[0].Type
+}
+
+// Helper function to get map value type
+func getMapValueType(v api.Variable) string {
+	if len(v.Children) < 2 {
+		return "unknown"
+	}
+	return v.Children[1].Type
+}

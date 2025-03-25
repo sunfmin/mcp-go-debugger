@@ -8,7 +8,7 @@ import (
 
 // DebugContext provides shared context across all debug responses
 type DebugContext struct {
-	delveState      *api.DebuggerState `json:"-"`                         // Internal Delve state
+	DelveState      *api.DebuggerState `json:"-"`                         // Internal Delve state
 	CurrentPosition *Location          `json:"currentPosition,omitempty"` // Current execution position
 	Timestamp       time.Time          `json:"timestamp"`                 // Operation timestamp
 	LastOperation   string             `json:"lastOperation,omitempty"`   // Last debug operation performed
@@ -24,7 +24,7 @@ type DebugContext struct {
 // Thread represents a thread in the debugged process with LLM-friendly additions
 type Thread struct {
 	// Internal Delve thread - not exposed in JSON
-	delveThread *api.Thread `json:"-"`
+	DelveThread *api.Thread `json:"-"`
 
 	// LLM-friendly fields
 	ID       int      `json:"id"`       // Thread ID
@@ -37,10 +37,10 @@ type Thread struct {
 // Goroutine represents a goroutine with LLM-friendly additions
 type Goroutine struct {
 	// Internal Delve goroutine - not exposed in JSON
-	delveGoroutine *api.Goroutine `json:"-"`
+	DelveGoroutine *api.Goroutine `json:"-"`
 
 	// LLM-friendly fields
-	ID         int      `json:"id"`                     // Goroutine ID
+	ID         int64    `json:"id"`                     // Goroutine ID
 	Status     string   `json:"status"`                 // Status in human terms (running, waiting, blocked)
 	WaitReason string   `json:"waitReason,omitempty"`   // Why goroutine is waiting, in plain English
 	Location   Location `json:"location"`               // Current location
@@ -52,7 +52,7 @@ type Goroutine struct {
 // Location represents a source code location in human-readable format
 type Location struct {
 	// Internal Delve location - not exposed in JSON
-	delveLocation *api.Location `json:"-"`
+	DelveLocation *api.Location `json:"-"`
 
 	// LLM-friendly fields
 	File     string `json:"file"`               // Source file path
@@ -65,7 +65,7 @@ type Location struct {
 // Variable represents a program variable with LLM-friendly additions
 type Variable struct {
 	// Internal Delve variable - not exposed in JSON
-	delveVar *api.Variable `json:"-"`
+	DelveVar *api.Variable `json:"-"`
 
 	// LLM-friendly fields
 	Name       string   `json:"name"`           // Variable name
@@ -81,7 +81,7 @@ type Variable struct {
 // Breakpoint represents a breakpoint with LLM-friendly additions
 type Breakpoint struct {
 	// Internal Delve breakpoint - not exposed in JSON
-	delveBreakpoint *api.Breakpoint `json:"-"`
+	DelveBreakpoint *api.Breakpoint `json:"-"`
 
 	// LLM-friendly fields
 	ID          int      `json:"id"`                  // Breakpoint ID
@@ -91,14 +91,14 @@ type Breakpoint struct {
 	Variables   []string `json:"variables,omitempty"` // Variables in scope
 	Package     string   `json:"package"`             // Package where breakpoint is set
 	Condition   string   `json:"condition,omitempty"` // Human-readable condition description
-	HitCount    int      `json:"hitCount"`            // Number of times breakpoint was hit
+	HitCount    uint64   `json:"hitCount"`            // Number of times breakpoint was hit
 	LastHitInfo string   `json:"lastHit,omitempty"`   // Information about last hit in human terms
 }
 
 // Function represents a function with LLM-friendly additions
 type Function struct {
 	// Internal Delve function - not exposed in JSON
-	delveFunc *api.Function `json:"-"`
+	DelveFunc *api.Function `json:"-"`
 
 	// LLM-friendly fields
 	Name        string   `json:"name"`              // Function name
@@ -113,15 +113,33 @@ type Function struct {
 // DebuggerState represents the current state with LLM-friendly additions
 type DebuggerState struct {
 	// Internal Delve state - not exposed in JSON
-	delveState *api.DebuggerState `json:"-"`
+	DelveState *api.DebuggerState `json:"-"`
 
 	// LLM-friendly fields
-	Status           string     `json:"status"`              // Current state in human terms
-	CurrentThread    *Thread    `json:"thread,omitempty"`    // Current thread with readable info
-	CurrentGoroutine *Goroutine `json:"goroutine,omitempty"` // Current goroutine with readable info
-	Reason           string     `json:"reason,omitempty"`    // Why debugger is in this state
-	NextSteps        []string   `json:"nextSteps,omitempty"` // Possible next debugging actions
-	Summary          string     `json:"summary"`             // Brief state description for LLM
+	Status            string     `json:"status"`              // Current state in human terms
+	CurrentThread     *Thread    `json:"thread,omitempty"`    // Current thread with readable info
+	SelectedGoroutine *Goroutine `json:"goroutine,omitempty"` // Current goroutine with readable info
+	Threads           []*Thread  `json:"threads,omitempty"`   // All threads
+	Running           bool       `json:"running"`             // Whether program is running
+	Exited            bool       `json:"exited"`              // Whether program has exited
+	ExitStatus        int        `json:"exitStatus"`          // Exit status if program has exited
+	Err               error      `json:"error,omitempty"`     // Any error that occurred
+	StateReason       string     `json:"reason,omitempty"`    // Why debugger is in this state
+	NextSteps         []string   `json:"nextSteps,omitempty"` // Possible next debugging actions
+	Summary           string     `json:"summary"`             // Brief state description for LLM
+}
+
+// DebuggerOutput represents captured program output with LLM-friendly additions
+type DebuggerOutput struct {
+	// Internal Delve state - not exposed in JSON
+	DelveState *api.DebuggerState `json:"-"`
+
+	// LLM-friendly fields
+	Stdout        string       `json:"stdout"`        // Captured standard output
+	Stderr        string       `json:"stderr"`        // Captured standard error
+	OutputSummary string       `json:"outputSummary"` // Brief summary of output for LLM
+	Context       DebugContext `json:"context"`       // Common debugging context
+	ExitCode      int          `json:"exitCode"`      // Program exit code if available
 }
 
 // Operation-specific responses
@@ -154,7 +172,7 @@ type StepResponse struct {
 	ChangedVars  []Variable   `json:"changedVars"` // Variables that changed during step
 }
 
-type ExamineVarResponse struct {
+type EvalVariableResponse struct {
 	Status    string       `json:"status"`
 	Context   DebugContext `json:"context"`
 	Variable  Variable     `json:"variable"` // The examined variable
@@ -186,4 +204,53 @@ type DebuggerOutputResponse struct {
 	Stdout        string       `json:"stdout"`        // Captured standard output
 	Stderr        string       `json:"stderr"`        // Captured standard error
 	OutputSummary string       `json:"outputSummary"` // Brief summary of output for LLM
+}
+
+type AttachResponse struct {
+	Status  string       `json:"status"`  // "success" or "error"
+	Context DebugContext `json:"context"` // Common debugging context
+	Pid     int          `json:"pid"`     // Process ID that was attached to
+
+	// LLM-friendly additions
+	ProcessInfo struct {
+		Name      string   `json:"name"`      // Process name
+		StartTime string   `json:"startTime"` // Process start time
+		CmdLine   []string `json:"cmdLine"`   // Command line that started the process
+	} `json:"processInfo"`
+	Summary string `json:"summary"` // Brief description of the attach operation
+}
+
+type DebugSourceResponse struct {
+	Status     string       `json:"status"`     // "success" or "error"
+	Context    DebugContext `json:"context"`    // Common debugging context
+	SourceFile string       `json:"sourceFile"` // Original source file path
+	BinaryPath string       `json:"binaryPath"` // Path to compiled binary
+	CmdLine    []string     `json:"cmdLine"`    // Command line arguments
+
+	// LLM-friendly additions
+	BuildInfo struct {
+		Package   string `json:"package"`   // Main package
+		GoVersion string `json:"goVersion"` // Go version used
+		BuildTime string `json:"buildTime"` // When the binary was built
+	} `json:"buildInfo"`
+	Summary string `json:"summary"` // Brief description of the debug session
+}
+
+type DebugTestResponse struct {
+	Status     string       `json:"status"`     // "success" or "error"
+	Context    DebugContext `json:"context"`    // Common debugging context
+	TestFile   string       `json:"testFile"`   // Test file path
+	TestName   string       `json:"testName"`   // Name of the test being debugged
+	BinaryPath string       `json:"binaryPath"` // Path to compiled test binary
+	CmdLine    []string     `json:"cmdLine"`    // Command line arguments
+	TestFlags  []string     `json:"testFlags"`  // Additional test flags
+
+	// LLM-friendly additions
+	TestInfo struct {
+		Package      string   `json:"package"`      // Test package name
+		TestSuite    string   `json:"testSuite"`    // Test suite name if any
+		SubTests     []string `json:"subTests"`     // List of sub-tests if any
+		Dependencies []string `json:"dependencies"` // Test dependencies
+	} `json:"testInfo"`
+	Summary string `json:"summary"` // Brief description of the test debug session
 }

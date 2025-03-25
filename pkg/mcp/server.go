@@ -4,33 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"time"
 
-	"github.com/go-delve/delve/service/api"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 	"github.com/sunfmin/mcp-go-debugger/pkg/debugger"
 	"github.com/sunfmin/mcp-go-debugger/pkg/logger"
+	"github.com/sunfmin/mcp-go-debugger/pkg/types"
 )
-
-// StatusResponse represents the status output
-type StatusResponse struct {
-	Server   ServerInfo       `json:"server"`
-	Debugger api.DebuggerState `json:"debugger"`
-}
-
-// ServerInfo holds information about the MCP server
-type ServerInfo struct {
-	Name    string `json:"name"`
-	Version string `json:"version"`
-	Uptime  string `json:"uptime"`
-}
-
-// BreakpointsListResponse represents the list_breakpoints output
-type BreakpointsListResponse struct {
-	Breakpoints []*api.Breakpoint `json:"breakpoints"`
-	Count       int              `json:"count"`
-}
 
 // MCPDebugServer encapsulates the MCP server with debug functionality
 type MCPDebugServer struct {
@@ -67,10 +47,7 @@ func (s *MCPDebugServer) DebugClient() *debugger.Client {
 func (s *MCPDebugServer) registerTools() {
 	// Add ping tool
 	s.addPingTool()
-	
-	// Add status tool
-	s.addStatusTool()
-	
+
 	// Add debug tools
 	s.addLaunchTool()
 	s.addAttachTool()
@@ -85,8 +62,6 @@ func (s *MCPDebugServer) registerTools() {
 	s.addStepOverTool()
 	s.addStepOutTool()
 	s.addExamineVariableTool()
-	s.addListScopeVariablesTool()
-	s.addGetExecutionPositionTool()
 	s.addGetDebuggerOutputTool()
 }
 
@@ -97,15 +72,6 @@ func (s *MCPDebugServer) addPingTool() {
 	)
 
 	s.server.AddTool(pingTool, s.Ping)
-}
-
-// addStatusTool adds a tool to check the status of the MCP and debugger
-func (s *MCPDebugServer) addStatusTool() {
-	statusTool := mcp.NewTool("status",
-		mcp.WithDescription("Check the status of the MCP server and debugger"),
-	)
-
-	s.server.AddTool(statusTool, s.Status)
 }
 
 // addLaunchTool adds the launch tool
@@ -120,7 +86,7 @@ func (s *MCPDebugServer) addLaunchTool() {
 			mcp.Description("Arguments to pass to the program"),
 		),
 	)
-	
+
 	s.server.AddTool(launchTool, s.Launch)
 }
 
@@ -133,7 +99,7 @@ func (s *MCPDebugServer) addAttachTool() {
 			mcp.Description("Process ID to attach to"),
 		),
 	)
-	
+
 	s.server.AddTool(attachTool, s.Attach)
 }
 
@@ -142,7 +108,7 @@ func (s *MCPDebugServer) addCloseTool() {
 	closeTool := mcp.NewTool("close",
 		mcp.WithDescription("Close the current debugging session"),
 	)
-	
+
 	s.server.AddTool(closeTool, s.Close)
 }
 
@@ -159,7 +125,7 @@ func (s *MCPDebugServer) addSetBreakpointTool() {
 			mcp.Description("Line number"),
 		),
 	)
-	
+
 	s.server.AddTool(breakpointTool, s.SetBreakpoint)
 }
 
@@ -168,7 +134,7 @@ func (s *MCPDebugServer) addListBreakpointsTool() {
 	listBreakpointsTool := mcp.NewTool("list_breakpoints",
 		mcp.WithDescription("List all currently set breakpoints"),
 	)
-	
+
 	s.server.AddTool(listBreakpointsTool, s.ListBreakpoints)
 }
 
@@ -181,7 +147,7 @@ func (s *MCPDebugServer) addRemoveBreakpointTool() {
 			mcp.Description("ID of the breakpoint to remove"),
 		),
 	)
-	
+
 	s.server.AddTool(removeBreakpointTool, s.RemoveBreakpoint)
 }
 
@@ -197,7 +163,7 @@ func (s *MCPDebugServer) addDebugSourceFileTool() {
 			mcp.Description("Arguments to pass to the program"),
 		),
 	)
-	
+
 	s.server.AddTool(debugTool, s.DebugSourceFile)
 }
 
@@ -226,7 +192,7 @@ func (s *MCPDebugServer) addContinueTool() {
 	continueTool := mcp.NewTool("continue",
 		mcp.WithDescription("Continue execution until next breakpoint or program end"),
 	)
-	
+
 	s.server.AddTool(continueTool, s.Continue)
 }
 
@@ -235,7 +201,7 @@ func (s *MCPDebugServer) addStepTool() {
 	stepTool := mcp.NewTool("step",
 		mcp.WithDescription("Step into the next function call"),
 	)
-	
+
 	s.server.AddTool(stepTool, s.Step)
 }
 
@@ -244,7 +210,7 @@ func (s *MCPDebugServer) addStepOverTool() {
 	stepOverTool := mcp.NewTool("step_over",
 		mcp.WithDescription("Step over the next function call"),
 	)
-	
+
 	s.server.AddTool(stepOverTool, s.StepOver)
 }
 
@@ -253,7 +219,7 @@ func (s *MCPDebugServer) addStepOutTool() {
 	stepOutTool := mcp.NewTool("step_out",
 		mcp.WithDescription("Step out of the current function"),
 	)
-	
+
 	s.server.AddTool(stepOutTool, s.StepOut)
 }
 
@@ -269,29 +235,8 @@ func (s *MCPDebugServer) addExamineVariableTool() {
 			mcp.Description("Depth for examining nested structures (default: 1)"),
 		),
 	)
-	
-	s.server.AddTool(examineVarTool, s.ExamineVariable)
-}
 
-// addListScopeVariablesTool adds the list_scope_variables tool
-func (s *MCPDebugServer) addListScopeVariablesTool() {
-	listScopeVariablesTool := mcp.NewTool("list_scope_variables",
-		mcp.WithDescription("List all variables in the current scope (local, args, and package)"),
-		mcp.WithNumber("depth",
-			mcp.Description("Maximum depth to recurse into complex variables"),
-		),
-	)
-	
-	s.server.AddTool(listScopeVariablesTool, s.ListScopeVariables)
-}
-
-// addGetExecutionPositionTool adds the get_execution_position tool
-func (s *MCPDebugServer) addGetExecutionPositionTool() {
-	positionTool := mcp.NewTool("get_execution_position",
-		mcp.WithDescription("Get the current execution position including file, line number, and function name"),
-	)
-	
-	s.server.AddTool(positionTool, s.GetExecutionPosition)
+	s.server.AddTool(examineVarTool, s.EvalVariable)
 }
 
 // addGetDebuggerOutputTool registers the get_debugger_output tool
@@ -311,51 +256,18 @@ func newErrorResult(format string, args ...interface{}) *mcp.CallToolResult {
 }
 
 // Ping handles the ping command
-func (s *MCPDebugServer) Ping(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+func (s *MCPDebugServer) Ping(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	logger.Debug("Received ping request")
 	// Return a simple number result (1) to indicate success
 	return mcp.FormatNumberResult(1.0), nil
 }
 
-// Status handles the status command
-func (s *MCPDebugServer) Status(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	logger.Debug("Received status request")
-	
-	// Calculate uptime - using current time since we don't have StartTime method
-	uptime := time.Now().Format(time.RFC3339)
-	
-	// Get debugger status
-	debuggerState, err := s.debugClient.GetDebuggerState()
-	if err != nil {
-		debuggerState = &api.DebuggerState{}
-		logger.Debug("Failed to get debugger state: %v", err)
-	}
-	
-	// Build response
-	status := StatusResponse{
-		Server: ServerInfo{
-			Name:    "Go Debugger MCP", // Hardcoded name since we don't have Name method
-			Version: s.version,
-			Uptime:  uptime,
-		},
-		Debugger: *debuggerState,
-	}
-	
-	// Convert to JSON
-	jsonBytes, err := json.Marshal(status)
-	if err != nil {
-		return mcp.NewToolResultText(fmt.Sprintf("Error serializing status: %v", err)), nil
-	}
-	
-	return mcp.NewToolResultText(string(jsonBytes)), nil
-}
-
 // Launch handles the launch command
 func (s *MCPDebugServer) Launch(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	logger.Debug("Received launch request")
-	
+
 	program := request.Params.Arguments["program"].(string)
-	
+
 	var args []string
 	if argsVal, ok := request.Params.Arguments["args"]; ok && argsVal != nil {
 		argsArray := argsVal.([]interface{})
@@ -364,171 +276,159 @@ func (s *MCPDebugServer) Launch(ctx context.Context, request mcp.CallToolRequest
 			args[i] = fmt.Sprintf("%v", arg)
 		}
 	}
-	
+
 	// Make sure no debug session is already active
 	if s.debugClient.IsConnected() {
-		err := s.debugClient.Close()
+		_, err := s.debugClient.Close()
 		if err != nil {
 			logger.Error("Failed to close existing debug session", "error", err)
 			return newErrorResult("failed to close existing debug session: %v", err), nil
 		}
 	}
-	
+
 	// Launch the program
-	err := s.debugClient.LaunchProgram(program, args)
+	response, err := s.debugClient.LaunchProgram(program, args)
 	if err != nil {
 		logger.Error("Failed to launch program", "error", err, "program", program)
 		return newErrorResult("failed to launch program: %v", err), nil
 	}
-	
-	return mcp.NewToolResultText(fmt.Sprintf("Successfully launched %s with debugging enabled", program)), nil
+
+	return newToolResultJSON(response)
 }
 
 // Attach handles the attach command
 func (s *MCPDebugServer) Attach(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	logger.Debug("Received attach request")
-	
+
 	pidFloat := request.Params.Arguments["pid"].(float64)
 	pid := int(pidFloat)
-	
+
 	// Make sure no debug session is already active
 	if s.debugClient.IsConnected() {
-		err := s.debugClient.Close()
+		_, err := s.debugClient.Close()
 		if err != nil {
 			logger.Error("Failed to close existing debug session", "error", err)
 			return newErrorResult("failed to close existing debug session: %v", err), nil
 		}
 	}
-	
+
 	// Attach to the process
-	err := s.debugClient.AttachToProcess(pid)
+	response, err := s.debugClient.AttachToProcess(pid)
 	if err != nil {
 		logger.Error("Failed to attach to process", "error", err, "pid", pid)
 		return newErrorResult("failed to attach to process: %v", err), nil
 	}
-	
-	return mcp.NewToolResultText(fmt.Sprintf("Successfully attached to process %d", pid)), nil
+
+	return newToolResultJSON(response)
 }
 
 // Close handles the close command
 func (s *MCPDebugServer) Close(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	logger.Debug("Received close request")
-	
+
 	if !s.debugClient.IsConnected() {
 		return mcp.NewToolResultText("No active debug session to close"), nil
 	}
-	
-	err := s.debugClient.Close()
+
+	response, err := s.debugClient.Close()
 	if err != nil {
 		logger.Error("Failed to close debug session", "error", err)
 		return newErrorResult("failed to close debug session: %v", err), nil
 	}
-	
+
 	// Reinitialize the debug client to ensure it's ready for the next session
 	s.debugClient = debugger.NewClient()
-	
-	return mcp.NewToolResultText("Debug session closed successfully"), nil
+
+	return newToolResultJSON(response)
 }
 
 // SetBreakpoint handles the set_breakpoint command
 func (s *MCPDebugServer) SetBreakpoint(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	logger.Debug("Received set_breakpoint request")
-	
+
 	if !s.debugClient.IsConnected() {
 		return newErrorResult("no active debug session, please launch or attach first"), nil
 	}
-	
-	// Parse parameters
-	file, ok := request.Params.Arguments["file"].(string)
-	if !ok || file == "" {
-		return newErrorResult("file parameter is required"), nil
-	}
-	
-	lineVal, ok := request.Params.Arguments["line"]
-	if !ok {
-		return newErrorResult("line parameter is required"), nil
-	}
-	
-	line, ok := lineVal.(float64)
-	if !ok {
-		return newErrorResult("line parameter must be a number"), nil
-	}
-	
-	// Set the breakpoint
-	bp, err := s.debugClient.SetBreakpoint(file, int(line))
+
+	file := request.Params.Arguments["file"].(string)
+	line := int(request.Params.Arguments["line"].(float64))
+
+	breakpoint, err := s.debugClient.SetBreakpoint(file, line)
 	if err != nil {
 		logger.Error("Failed to set breakpoint", "error", err)
 		return newErrorResult("failed to set breakpoint: %v", err), nil
 	}
-	
-	// Add a log message
-	logger.Info("Breakpoint set successfully", "id", bp.ID, "file", file, "line", int(line))
-	
-	// Return the breakpoint as JSON
-	jsonBytes, err := json.Marshal(bp)
-	if err != nil {
-		return newErrorResult("failed to serialize breakpoint: %v", err), nil
+
+	response := types.BreakpointResponse{
+		Status:     "success",
+		Breakpoint: *breakpoint,
 	}
-	
-	return mcp.NewToolResultText(string(jsonBytes)), nil
+
+	return newToolResultJSON(response)
 }
 
 // ListBreakpoints handles the list_breakpoints command
 func (s *MCPDebugServer) ListBreakpoints(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	logger.Debug("Received list_breakpoints request")
-	
+
 	if !s.debugClient.IsConnected() {
 		return newErrorResult("no active debug session, please launch or attach first"), nil
 	}
-	
+
 	// Get breakpoints from debug client
 	breakpoints, err := s.debugClient.ListBreakpoints()
 	if err != nil {
 		logger.Error("Failed to list breakpoints", "error", err)
 		return newErrorResult("failed to list breakpoints: %v", err), nil
 	}
-	
-	// Create a structured response
-	response := BreakpointsListResponse{
-		Breakpoints: breakpoints,
-		Count:       len(breakpoints),
+
+	// Convert []*types.Breakpoint to []types.Breakpoint
+	bps := make([]types.Breakpoint, len(breakpoints))
+	for i, bp := range breakpoints {
+		bps[i] = *bp
 	}
-	
-	// Convert to JSON string
-	jsonBytes, err := json.Marshal(response)
-	if err != nil {
-		return newErrorResult("failed to serialize breakpoints: %v", err), nil
+
+	response := types.BreakpointResponse{
+		Status:         "success",
+		AllBreakpoints: bps,
 	}
-	
-	return mcp.NewToolResultText(string(jsonBytes)), nil
+
+	return newToolResultJSON(response)
 }
 
 // RemoveBreakpoint handles the remove_breakpoint command
 func (s *MCPDebugServer) RemoveBreakpoint(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	logger.Debug("Received remove_breakpoint request")
-	
+
 	if !s.debugClient.IsConnected() {
 		return newErrorResult("no active debug session, please launch or attach first"), nil
 	}
-	
-	idFloat := request.Params.Arguments["id"].(float64)
-	id := int(idFloat)
-	
-	err := s.debugClient.RemoveBreakpoint(id)
+
+	id := int(request.Params.Arguments["id"].(float64))
+
+	response, err := s.debugClient.RemoveBreakpoint(id)
 	if err != nil {
-		logger.Error("Failed to remove breakpoint", "error", err, "breakpoint_id", id)
+		logger.Error("Failed to remove breakpoint", "error", err)
 		return newErrorResult("failed to remove breakpoint: %v", err), nil
 	}
-	
-	return mcp.NewToolResultText(fmt.Sprintf("Successfully removed breakpoint with ID %d", id)), nil
+
+	return newToolResultJSON(response)
 }
 
 // DebugSourceFile handles the debug command
 func (s *MCPDebugServer) DebugSourceFile(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	logger.Debug("Received debug source file request")
-	
+	logger.Debug("Received debug_source_file request")
+
+	if s.debugClient.IsConnected() {
+		_, err := s.debugClient.Close()
+		if err != nil {
+			logger.Error("Failed to close existing debug session", "error", err)
+			return newErrorResult("failed to close existing debug session: %v", err), nil
+		}
+	}
+
 	file := request.Params.Arguments["file"].(string)
-	
+
 	var args []string
 	if argsVal, ok := request.Params.Arguments["args"]; ok && argsVal != nil {
 		argsArray := argsVal.([]interface{})
@@ -537,262 +437,169 @@ func (s *MCPDebugServer) DebugSourceFile(ctx context.Context, request mcp.CallTo
 			args[i] = fmt.Sprintf("%v", arg)
 		}
 	}
-	
-	// Make sure no debug session is already active
+
+	response, err := s.debugClient.DebugSourceFile(file, args)
+	if err != nil {
+		logger.Error("Failed to debug source file", "error", err)
+		return newErrorResult("failed to debug source file: %v", err), nil
+	}
+
+	return newToolResultJSON(response)
+}
+
+// Continue handles the continue command
+func (s *MCPDebugServer) Continue(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	logger.Debug("Received continue request")
+
+	if !s.debugClient.IsConnected() {
+		return newErrorResult("no active debug session, please launch or attach first"), nil
+	}
+
+	state, err := s.debugClient.Continue()
+	if err != nil {
+		logger.Error("Failed to continue execution", "error", err)
+		return newErrorResult("failed to continue execution: %v", err), nil
+	}
+
+	return newToolResultJSON(state)
+}
+
+// Step handles the step command
+func (s *MCPDebugServer) Step(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	logger.Debug("Received step request")
+
+	if !s.debugClient.IsConnected() {
+		return newErrorResult("no active debug session, please launch or attach first"), nil
+	}
+
+	state, err := s.debugClient.Step()
+	if err != nil {
+		logger.Error("Failed to step", "error", err)
+		return newErrorResult("failed to step: %v", err), nil
+	}
+
+	return newToolResultJSON(state)
+}
+
+// StepOver handles the step_over command
+func (s *MCPDebugServer) StepOver(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	logger.Debug("Received step_over request")
+
+	if !s.debugClient.IsConnected() {
+		return newErrorResult("no active debug session, please launch or attach first"), nil
+	}
+
+	state, err := s.debugClient.StepOver()
+	if err != nil {
+		logger.Error("Failed to step over", "error", err)
+		return newErrorResult("failed to step over: %v", err), nil
+	}
+
+	return newToolResultJSON(state)
+}
+
+// StepOut handles the step_out command
+func (s *MCPDebugServer) StepOut(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	logger.Debug("Received step_out request")
+
+	if !s.debugClient.IsConnected() {
+		return newErrorResult("no active debug session, please launch or attach first"), nil
+	}
+
+	state, err := s.debugClient.StepOut()
+	if err != nil {
+		logger.Error("Failed to step out", "error", err)
+		return newErrorResult("failed to step out: %v", err), nil
+	}
+
+	return newToolResultJSON(state)
+}
+
+// EvalVariable handles the examine_variable command
+func (s *MCPDebugServer) EvalVariable(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	logger.Debug("Received examine_variable request")
+
+	if !s.debugClient.IsConnected() {
+		return newErrorResult("no active debug session, please launch or attach first"), nil
+	}
+
+	name := request.Params.Arguments["name"].(string)
+
+	var depth int
+	if depthVal, ok := request.Params.Arguments["depth"]; ok && depthVal != nil {
+		depth = int(depthVal.(float64))
+	} else {
+		depth = 1
+	}
+
+	variable, err := s.debugClient.EvalVariable(name, depth)
+	if err != nil {
+		logger.Error("Failed to examine variable", "error", err)
+		return newErrorResult("failed to examine variable: %v", err), nil
+	}
+
+	response := types.EvalVariableResponse{
+		Status:   "success",
+		Variable: *variable,
+	}
+
+	return newToolResultJSON(response)
+}
+
+// GetDebuggerOutput handles the get_debugger_output command
+func (s *MCPDebugServer) GetDebuggerOutput(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	logger.Debug("Received get_debugger_output request")
+
+	if !s.debugClient.IsConnected() {
+		return newErrorResult("no active debug session, please launch or attach first"), nil
+	}
+
+	output, err := s.debugClient.GetDebuggerOutput()
+	if err != nil {
+		logger.Error("Failed to get debugger output", "error", err)
+		return newErrorResult("failed to get debugger output: %v", err), nil
+	}
+
+	return newToolResultJSON(output)
+}
+
+// DebugTest handles the debug_test command
+func (s *MCPDebugServer) DebugTest(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	logger.Debug("Received debug_test request")
+
 	if s.debugClient.IsConnected() {
-		err := s.debugClient.Close()
+		_, err := s.debugClient.Close()
 		if err != nil {
 			logger.Error("Failed to close existing debug session", "error", err)
 			return newErrorResult("failed to close existing debug session: %v", err), nil
 		}
 	}
-	
-	// Debug the source file
-	err := s.debugClient.DebugSourceFile(file, args)
-	if err != nil {
-		logger.Error("Failed to debug source file", "error", err, "file", file)
-		return newErrorResult("failed to debug source file: %v", err), nil
-	}
-	
-	return mcp.NewToolResultText(fmt.Sprintf("Successfully launched debugger for source file %s", file)), nil
-}
 
-// Continue handles the continue_execution command
-func (s *MCPDebugServer) Continue(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	logger.Debug("Received continue request")
-	
-	if !s.debugClient.IsConnected() {
-		return newErrorResult("no active debug session, please launch or attach first"), nil
-	}
-	
-	err := s.debugClient.Continue()
-	if err != nil {
-		logger.Error("Failed to continue execution", "error", err)
-		return newErrorResult("failed to continue execution: %v", err), nil
-	}
-	
-	return mcp.NewToolResultText("Execution continued"), nil
-}
+	testfile := request.Params.Arguments["testfile"].(string)
+	testname := request.Params.Arguments["testname"].(string)
 
-// Step handles the step_instruction command (step into)
-func (s *MCPDebugServer) Step(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	logger.Debug("Received step request")
-	
-	if !s.debugClient.IsConnected() {
-		return newErrorResult("no active debug session, please launch or attach first"), nil
-	}
-	
-	err := s.debugClient.Step()
-	if err != nil {
-		logger.Error("Failed to step", "error", err)
-		return newErrorResult("failed to step: %v", err), nil
-	}
-	
-	return mcp.NewToolResultText("Stepped into next instruction"), nil
-}
-
-// StepOver handles the step_over command
-func (s *MCPDebugServer) StepOver(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	logger.Debug("Received step over request")
-	
-	if !s.debugClient.IsConnected() {
-		return newErrorResult("no active debug session, please launch or attach first"), nil
-	}
-	
-	err := s.debugClient.StepOver()
-	if err != nil {
-		logger.Error("Failed to step over", "error", err)
-		return newErrorResult("failed to step over: %v", err), nil
-	}
-	
-	return mcp.NewToolResultText("Stepped over next instruction"), nil
-}
-
-// StepOut handles the step_out command
-func (s *MCPDebugServer) StepOut(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	logger.Debug("Received step out request")
-	
-	if !s.debugClient.IsConnected() {
-		return newErrorResult("no active debug session, please launch or attach first"), nil
-	}
-	
-	err := s.debugClient.StepOut()
-	if err != nil {
-		logger.Error("Failed to step out", "error", err)
-		return newErrorResult("failed to step out: %v", err), nil
-	}
-	
-	return mcp.NewToolResultText("Stepped out of current function"), nil
-}
-
-// ExamineVariable handles the examine_variable command
-func (s *MCPDebugServer) ExamineVariable(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	logger.Debug("Received examine variable request")
-	
-	if !s.debugClient.IsConnected() {
-		return newErrorResult("no active debug session, please launch or attach first"), nil
-	}
-	
-	varName, ok := request.Params.Arguments["name"].(string)
-	if !ok || varName == "" {
-		return newErrorResult("variable name is required"), nil
-	}
-	
-	// Optionally handle depth parameter
-	var depth int = 1 // Default depth
-	if depthVal, ok := request.Params.Arguments["depth"].(float64); ok {
-		depth = int(depthVal)
-	}
-	
-	varInfo, err := s.debugClient.ExamineVariable(varName, depth)
-	if err != nil {
-		logger.Error("Failed to examine variable", "error", err, "variable", varName)
-		return newErrorResult("failed to examine variable %s: %v", varName, err), nil
-	}
-	
-	// Convert variable info to JSON
-	jsonBytes, err := json.Marshal(varInfo)
-	if err != nil {
-		return newErrorResult("failed to serialize variable info: %v", err), nil
-	}
-	
-	return mcp.NewToolResultText(string(jsonBytes)), nil
-}
-
-// ListScopeVariables handles the list_scope_variables command
-func (s *MCPDebugServer) ListScopeVariables(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	logger.Debug("Received list_scope_variables request")
-	
-	// Check if we have an active debug session
-	if s.debugClient == nil || !s.debugClient.IsConnected() {
-		return newErrorResult("no active debug session, please launch or attach to a program first"), nil
-	}
-	
-	// Get the depth parameter, default to 1 if not provided
-	depth := 1
-	if depthVal, ok := request.Params.Arguments["depth"]; ok {
-		if depthFloat, ok := depthVal.(float64); ok {
-			depth = int(depthFloat)
-		}
-	}
-	
-	// List all scope variables
-	scopeVars, err := s.debugClient.ListScopeVariables(depth)
-	if err != nil {
-		logger.Error("Failed to list scope variables", "error", err)
-		return newErrorResult("failed to list scope variables: %v", err), nil
-	}
-	
-	// Convert to JSON
-	jsonBytes, err := json.Marshal(scopeVars)
-	if err != nil {
-		logger.Error("Failed to marshal scope variables to JSON", "error", err)
-		return newErrorResult("failed to marshal scope variables to JSON: %v", err), nil
-	}
-	
-	return mcp.NewToolResultText(string(jsonBytes)), nil
-}
-
-// GetExecutionPosition handles the get_execution_position command
-func (s *MCPDebugServer) GetExecutionPosition(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	logger.Debug("Received get_execution_position request")
-	
-	if !s.debugClient.IsConnected() {
-		return newErrorResult("no active debug session, please launch or attach first"), nil
-	}
-	
-	// Get the current execution position from the debug client
-	position, err := s.debugClient.GetExecutionPosition()
-	if err != nil {
-		logger.Error("Failed to get execution position", "error", err)
-		return newErrorResult("failed to get execution position: %v", err), nil
-	}
-	
-	// Convert to JSON
-	jsonBytes, err := json.Marshal(position)
-	if err != nil {
-		return newErrorResult("failed to serialize execution position: %v", err), nil
-	}
-	
-	return mcp.NewToolResultText(string(jsonBytes)), nil
-}
-
-// GetDebuggerOutput retrieves any captured stdout/stderr from the debugged program
-func (s *MCPDebugServer) GetDebuggerOutput(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	if s.debugClient == nil || !s.debugClient.IsConnected() {
-		return newErrorResult("No active debug session"), nil
-	}
-
-	// Get all captured output
-	messages := s.debugClient.GetAllCapturedOutput()
-	
-	// Format the messages into a response
-	var response struct {
-		Messages []debugger.OutputMessage `json:"messages"`
-	}
-	response.Messages = messages
-	
-	// Convert to JSON
-	outputJSON, err := json.Marshal(response)
-	if err != nil {
-		return newErrorResult("Failed to marshal output messages: %v", err), nil
-	}
-	
-	// Return the output
-	return mcp.NewToolResultText(string(outputJSON)), nil
-}
-
-// DebugTest compiles and debugs a Go test function
-func (s *MCPDebugServer) DebugTest(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	logger.Debug("Received debug_test request")
-
-	// Create client if needed
-	if s.debugClient == nil {
-		s.debugClient = debugger.NewClient()
-	}
-
-	// Check if already debugging
-	if s.debugClient.IsConnected() {
-		return newErrorResult("Debugger is already connected. Close the current session first."), nil
-	}
-
-	// Get parameters from the arguments map directly
-	args := request.Params.Arguments
-
-	testFile, ok := args["testfile"].(string)
-	if !ok || testFile == "" {
-		return newErrorResult("Missing required parameter: testfile"), nil
-	}
-
-	testName, ok := args["testname"].(string)
-	if !ok || testName == "" {
-		return newErrorResult("Missing required parameter: testname"), nil
-	}
-
-	// Get optional testflags
-	var testFlags []string
-	if testFlagsIf, ok := args["testflags"]; ok {
-		testFlagsArray, ok := testFlagsIf.([]interface{})
-		if ok {
-			for _, flag := range testFlagsArray {
-				if flagStr, ok := flag.(string); ok {
-					testFlags = append(testFlags, flagStr)
-				}
-			}
+	var testflags []string
+	if testflagsVal, ok := request.Params.Arguments["testflags"]; ok && testflagsVal != nil {
+		testflagsArray := testflagsVal.([]interface{})
+		testflags = make([]string, len(testflagsArray))
+		for i, flag := range testflagsArray {
+			testflags[i] = fmt.Sprintf("%v", flag)
 		}
 	}
 
-	// Debug the test
-	err := s.debugClient.DebugTest(testFile, testName, testFlags)
+	response, err := s.debugClient.DebugTest(testfile, testname, testflags)
 	if err != nil {
-		return newErrorResult("Failed to debug test: %v", err), nil
+		logger.Error("Failed to debug test", "error", err)
+		return newErrorResult("failed to debug test: %v", err), nil
 	}
 
-	response := fmt.Sprintf("Successfully launched debugger for test %s in %s", testName, testFile)
-	
-	return &mcp.CallToolResult{
-		Content: []mcp.Content{
-			mcp.NewTextContent(response),
-		},
-	}, nil
-} 
+	return newToolResultJSON(response)
+}
+
+func newToolResultJSON(data interface{}) (*mcp.CallToolResult, error) {
+	jsonBytes, err := json.Marshal(data)
+	if err != nil {
+		return newErrorResult("failed to serialize data: %v", err), nil
+	}
+	return mcp.NewToolResultText(string(jsonBytes)), nil
+}

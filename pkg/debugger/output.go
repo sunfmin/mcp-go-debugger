@@ -2,9 +2,11 @@ package debugger
 
 import (
 	"fmt"
+	"github.com/go-delve/delve/service/api"
 	"time"
 
 	"github.com/sunfmin/mcp-go-debugger/pkg/logger"
+	"github.com/sunfmin/mcp-go-debugger/pkg/types"
 )
 
 // OutputMessage represents a captured output message
@@ -14,14 +16,8 @@ type OutputMessage struct {
 	Timestamp time.Time `json:"timestamp"`
 }
 
-// DebuggerOutput holds the captured stdout and stderr output from the debugged program
-type DebuggerOutput struct {
-	Stdout string `json:"stdout"`
-	Stderr string `json:"stderr"`
-}
-
 // GetDebuggerOutput returns the captured stdout and stderr from the debugged program
-func (c *Client) GetDebuggerOutput() (*DebuggerOutput, error) {
+func (c *Client) GetDebuggerOutput() (*types.DebuggerOutputResponse, error) {
 	if c.client == nil {
 		return nil, fmt.Errorf("no active debug session")
 	}
@@ -35,9 +31,10 @@ func (c *Client) GetDebuggerOutput() (*DebuggerOutput, error) {
 	}
 
 	// Return current output
-	output := &DebuggerOutput{
-		Stdout: c.stdout.String(),
-		Stderr: c.stderr.String(),
+	output := &types.DebuggerOutputResponse{
+		Stdout:        c.stdout.String(),
+		Stderr:        c.stderr.String(),
+		OutputSummary: generateOutputSummary(c.stdout.String(), c.stderr.String(), state),
 	}
 
 	logger.Debug("Retrieved program output, stdout: %d bytes, stderr: %d bytes",
@@ -65,22 +62,33 @@ func (c *Client) GetCapturedOutput() *OutputMessage {
 // GetAllCapturedOutput returns all currently available captured output messages
 func (c *Client) GetAllCapturedOutput() []OutputMessage {
 	var messages []OutputMessage
-
-	// Non-blocking read of up to 100 messages
-	// This prevents clearing the entire channel while still returning available messages
-	for i := 0; i < 100; i++ {
-		select {
-		case msg, ok := <-c.outputChan:
-			if !ok {
-				// Channel was closed
-				return messages
-			}
-			messages = append(messages, msg)
-		default:
-			// No more messages available without blocking
-			return messages
+	for {
+		msg := c.GetCapturedOutput()
+		if msg == nil {
+			break
 		}
+		messages = append(messages, *msg)
+	}
+	return messages
+}
+
+// Helper function to generate a summary of the output
+func generateOutputSummary(stdout, stderr string, state *api.DebuggerState) string {
+	var summary string
+	if state.Exited {
+		summary = fmt.Sprintf("Program exited with status %d. ", state.ExitStatus)
 	}
 
-	return messages
-} 
+	if len(stdout) > 0 {
+		summary += fmt.Sprintf("Stdout: %d bytes. ", len(stdout))
+	}
+	if len(stderr) > 0 {
+		summary += fmt.Sprintf("Stderr: %d bytes. ", len(stderr))
+	}
+
+	if len(summary) == 0 {
+		summary = "No output captured"
+	}
+
+	return summary
+}
