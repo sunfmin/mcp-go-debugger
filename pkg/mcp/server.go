@@ -12,14 +12,12 @@ import (
 	"github.com/sunfmin/mcp-go-debugger/pkg/types"
 )
 
-// MCPDebugServer encapsulates the MCP server with debug functionality
 type MCPDebugServer struct {
 	server      *server.MCPServer
 	debugClient *debugger.Client
 	version     string
 }
 
-// NewMCPDebugServer creates a new MCP debug server with debug functionality
 func NewMCPDebugServer(version string) *MCPDebugServer {
 	s := &MCPDebugServer{
 		server:      server.NewMCPServer("Go Debugger MCP", version),
@@ -27,54 +25,36 @@ func NewMCPDebugServer(version string) *MCPDebugServer {
 		version:     version,
 	}
 
-	// Register all tools
 	s.registerTools()
 
 	return s
 }
 
-// Server returns the underlying MCP server
 func (s *MCPDebugServer) Server() *server.MCPServer {
 	return s.server
 }
 
-// DebugClient returns the debug client
 func (s *MCPDebugServer) DebugClient() *debugger.Client {
 	return s.debugClient
 }
 
-// registerTools registers all debugging-related tools
 func (s *MCPDebugServer) registerTools() {
-	// Add ping tool
-	s.addPingTool()
-
-	// Add debug tools
+	s.addDebugSourceFileTool()
+	s.addDebugTestTool()
 	s.addLaunchTool()
 	s.addAttachTool()
 	s.addCloseTool()
 	s.addSetBreakpointTool()
 	s.addListBreakpointsTool()
 	s.addRemoveBreakpointTool()
-	s.addDebugSourceFileTool()
-	s.addDebugTestTool()
 	s.addContinueTool()
 	s.addStepTool()
 	s.addStepOverTool()
 	s.addStepOutTool()
-	s.addExamineVariableTool()
+	s.addEvalVariableTool()
 	s.addGetDebuggerOutputTool()
 }
 
-// addPingTool adds a simple ping tool for health checks
-func (s *MCPDebugServer) addPingTool() {
-	pingTool := mcp.NewTool("ping",
-		mcp.WithDescription("Simple ping tool to test connection"),
-	)
-
-	s.server.AddTool(pingTool, s.Ping)
-}
-
-// addLaunchTool adds the launch tool
 func (s *MCPDebugServer) addLaunchTool() {
 	launchTool := mcp.NewTool("launch",
 		mcp.WithDescription("Launch a Go application with debugging enabled"),
@@ -90,7 +70,6 @@ func (s *MCPDebugServer) addLaunchTool() {
 	s.server.AddTool(launchTool, s.Launch)
 }
 
-// addAttachTool adds the attach tool
 func (s *MCPDebugServer) addAttachTool() {
 	attachTool := mcp.NewTool("attach",
 		mcp.WithDescription("Attach to a running Go process"),
@@ -103,7 +82,6 @@ func (s *MCPDebugServer) addAttachTool() {
 	s.server.AddTool(attachTool, s.Attach)
 }
 
-// addCloseTool adds the close tool
 func (s *MCPDebugServer) addCloseTool() {
 	closeTool := mcp.NewTool("close",
 		mcp.WithDescription("Close the current debugging session"),
@@ -112,7 +90,6 @@ func (s *MCPDebugServer) addCloseTool() {
 	s.server.AddTool(closeTool, s.Close)
 }
 
-// addSetBreakpointTool adds the set_breakpoint tool
 func (s *MCPDebugServer) addSetBreakpointTool() {
 	breakpointTool := mcp.NewTool("set_breakpoint",
 		mcp.WithDescription("Set a breakpoint at a specific file location"),
@@ -129,7 +106,6 @@ func (s *MCPDebugServer) addSetBreakpointTool() {
 	s.server.AddTool(breakpointTool, s.SetBreakpoint)
 }
 
-// addListBreakpointsTool adds the list_breakpoints tool
 func (s *MCPDebugServer) addListBreakpointsTool() {
 	listBreakpointsTool := mcp.NewTool("list_breakpoints",
 		mcp.WithDescription("List all currently set breakpoints"),
@@ -138,7 +114,6 @@ func (s *MCPDebugServer) addListBreakpointsTool() {
 	s.server.AddTool(listBreakpointsTool, s.ListBreakpoints)
 }
 
-// addRemoveBreakpointTool adds the remove_breakpoint tool
 func (s *MCPDebugServer) addRemoveBreakpointTool() {
 	removeBreakpointTool := mcp.NewTool("remove_breakpoint",
 		mcp.WithDescription("Remove a breakpoint by its ID"),
@@ -151,7 +126,6 @@ func (s *MCPDebugServer) addRemoveBreakpointTool() {
 	s.server.AddTool(removeBreakpointTool, s.RemoveBreakpoint)
 }
 
-// addDebugSourceFileTool adds the debug tool
 func (s *MCPDebugServer) addDebugSourceFileTool() {
 	debugTool := mcp.NewTool("debug",
 		mcp.WithDescription("Debug a Go source file directly"),
@@ -167,7 +141,6 @@ func (s *MCPDebugServer) addDebugSourceFileTool() {
 	s.server.AddTool(debugTool, s.DebugSourceFile)
 }
 
-// addDebugTestTool adds a tool for debugging a Go test function
 func (s *MCPDebugServer) addDebugTestTool() {
 	debugTestTool := mcp.NewTool("debug_test",
 		mcp.WithDescription("Debug a Go test function"),
@@ -187,7 +160,6 @@ func (s *MCPDebugServer) addDebugTestTool() {
 	s.server.AddTool(debugTestTool, s.DebugTest)
 }
 
-// addContinueTool adds the continue_execution tool
 func (s *MCPDebugServer) addContinueTool() {
 	continueTool := mcp.NewTool("continue",
 		mcp.WithDescription("Continue execution until next breakpoint or program end"),
@@ -196,7 +168,6 @@ func (s *MCPDebugServer) addContinueTool() {
 	s.server.AddTool(continueTool, s.Continue)
 }
 
-// addStepTool adds the step tool (step into)
 func (s *MCPDebugServer) addStepTool() {
 	stepTool := mcp.NewTool("step",
 		mcp.WithDescription("Step into the next function call"),
@@ -205,7 +176,6 @@ func (s *MCPDebugServer) addStepTool() {
 	s.server.AddTool(stepTool, s.Step)
 }
 
-// addStepOverTool adds the step_over tool
 func (s *MCPDebugServer) addStepOverTool() {
 	stepOverTool := mcp.NewTool("step_over",
 		mcp.WithDescription("Step over the next function call"),
@@ -214,7 +184,6 @@ func (s *MCPDebugServer) addStepOverTool() {
 	s.server.AddTool(stepOverTool, s.StepOver)
 }
 
-// addStepOutTool adds the step_out tool
 func (s *MCPDebugServer) addStepOutTool() {
 	stepOutTool := mcp.NewTool("step_out",
 		mcp.WithDescription("Step out of the current function"),
@@ -223,23 +192,21 @@ func (s *MCPDebugServer) addStepOutTool() {
 	s.server.AddTool(stepOutTool, s.StepOut)
 }
 
-// addExamineVariableTool adds the examine_variable tool
-func (s *MCPDebugServer) addExamineVariableTool() {
-	examineVarTool := mcp.NewTool("examine_variable",
-		mcp.WithDescription("Examine the value of a variable"),
+func (s *MCPDebugServer) addEvalVariableTool() {
+	examineVarTool := mcp.NewTool("eval_variable",
+		mcp.WithDescription("Evaluate the value of a variable"),
 		mcp.WithString("name",
 			mcp.Required(),
-			mcp.Description("Name of the variable to examine"),
+			mcp.Description("Name of the variable to evaluate"),
 		),
 		mcp.WithNumber("depth",
-			mcp.Description("Depth for examining nested structures (default: 1)"),
+			mcp.Description("Depth for evaluate nested structures (default: 1)"),
 		),
 	)
 
 	s.server.AddTool(examineVarTool, s.EvalVariable)
 }
 
-// addGetDebuggerOutputTool registers the get_debugger_output tool
 func (s *MCPDebugServer) addGetDebuggerOutputTool() {
 	outputTool := mcp.NewTool("get_debugger_output",
 		mcp.WithDescription("Get captured stdout and stderr from the debugged program"),
@@ -248,21 +215,12 @@ func (s *MCPDebugServer) addGetDebuggerOutputTool() {
 	s.server.AddTool(outputTool, s.GetDebuggerOutput)
 }
 
-// newErrorResult creates a tool result that represents an error
 func newErrorResult(format string, args ...interface{}) *mcp.CallToolResult {
 	result := mcp.NewToolResultText(fmt.Sprintf("Error: "+format, args...))
 	result.IsError = true
 	return result
 }
 
-// Ping handles the ping command
-func (s *MCPDebugServer) Ping(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	logger.Debug("Received ping request")
-	// Return a simple number result (1) to indicate success
-	return mcp.FormatNumberResult(1.0), nil
-}
-
-// Launch handles the launch command
 func (s *MCPDebugServer) Launch(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	logger.Debug("Received launch request")
 
@@ -277,7 +235,6 @@ func (s *MCPDebugServer) Launch(ctx context.Context, request mcp.CallToolRequest
 		}
 	}
 
-	// Make sure no debug session is already active
 	if s.debugClient.IsConnected() {
 		_, err := s.debugClient.Close()
 		if err != nil {
@@ -286,20 +243,17 @@ func (s *MCPDebugServer) Launch(ctx context.Context, request mcp.CallToolRequest
 		}
 	}
 
-	// Launch the program
 	response := s.debugClient.LaunchProgram(program, args)
 
 	return newToolResultJSON(response)
 }
 
-// Attach handles the attach command
 func (s *MCPDebugServer) Attach(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	logger.Debug("Received attach request")
 
 	pidFloat := request.Params.Arguments["pid"].(float64)
 	pid := int(pidFloat)
 
-	// Make sure no debug session is already active
 	if s.debugClient.IsConnected() {
 		_, err := s.debugClient.Close()
 		if err != nil {
@@ -308,13 +262,11 @@ func (s *MCPDebugServer) Attach(ctx context.Context, request mcp.CallToolRequest
 		}
 	}
 
-	// Attach to the process
 	response := s.debugClient.AttachToProcess(pid)
 
 	return newToolResultJSON(response)
 }
 
-// Close handles the close command
 func (s *MCPDebugServer) Close(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	logger.Debug("Received close request")
 
@@ -328,13 +280,11 @@ func (s *MCPDebugServer) Close(ctx context.Context, request mcp.CallToolRequest)
 		return newErrorResult("failed to close debug session: %v", err), nil
 	}
 
-	// Reinitialize the debug client to ensure it's ready for the next session
 	s.debugClient = debugger.NewClient()
 
 	return newToolResultJSON(response)
 }
 
-// SetBreakpoint handles the set_breakpoint command
 func (s *MCPDebugServer) SetBreakpoint(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	logger.Debug("Received set_breakpoint request")
 
@@ -350,7 +300,6 @@ func (s *MCPDebugServer) SetBreakpoint(ctx context.Context, request mcp.CallTool
 	return newToolResultJSON(breakpoint)
 }
 
-// ListBreakpoints handles the list_breakpoints command
 func (s *MCPDebugServer) ListBreakpoints(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	logger.Debug("Received list_breakpoints request")
 
@@ -358,14 +307,12 @@ func (s *MCPDebugServer) ListBreakpoints(ctx context.Context, request mcp.CallTo
 		return newErrorResult("no active debug session, please launch or attach first"), nil
 	}
 
-	// Get breakpoints from debug client
 	breakpoints, err := s.debugClient.ListBreakpoints()
 	if err != nil {
 		logger.Error("Failed to list breakpoints", "error", err)
 		return newErrorResult("failed to list breakpoints: %v", err), nil
 	}
 
-	// Convert []*types.Breakpoint to []types.Breakpoint
 	bps := make([]types.Breakpoint, len(breakpoints))
 	for i, bp := range breakpoints {
 		bps[i] = bp
@@ -379,7 +326,6 @@ func (s *MCPDebugServer) ListBreakpoints(ctx context.Context, request mcp.CallTo
 	return newToolResultJSON(response)
 }
 
-// RemoveBreakpoint handles the remove_breakpoint command
 func (s *MCPDebugServer) RemoveBreakpoint(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	logger.Debug("Received remove_breakpoint request")
 
@@ -394,7 +340,6 @@ func (s *MCPDebugServer) RemoveBreakpoint(ctx context.Context, request mcp.CallT
 	return newToolResultJSON(response)
 }
 
-// DebugSourceFile handles the debug command
 func (s *MCPDebugServer) DebugSourceFile(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	logger.Debug("Received debug_source_file request")
 
@@ -422,7 +367,6 @@ func (s *MCPDebugServer) DebugSourceFile(ctx context.Context, request mcp.CallTo
 	return newToolResultJSON(response)
 }
 
-// Continue handles the continue command
 func (s *MCPDebugServer) Continue(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	logger.Debug("Received continue request")
 
@@ -434,7 +378,6 @@ func (s *MCPDebugServer) Continue(ctx context.Context, request mcp.CallToolReque
 	return newToolResultJSON(state)
 }
 
-// Step handles the step command
 func (s *MCPDebugServer) Step(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	logger.Debug("Received step request")
 
@@ -447,7 +390,6 @@ func (s *MCPDebugServer) Step(ctx context.Context, request mcp.CallToolRequest) 
 	return newToolResultJSON(state)
 }
 
-// StepOver handles the step_over command
 func (s *MCPDebugServer) StepOver(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	logger.Debug("Received step_over request")
 
@@ -460,7 +402,6 @@ func (s *MCPDebugServer) StepOver(ctx context.Context, request mcp.CallToolReque
 	return newToolResultJSON(state)
 }
 
-// StepOut handles the step_out command
 func (s *MCPDebugServer) StepOut(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	logger.Debug("Received step_out request")
 
@@ -472,9 +413,8 @@ func (s *MCPDebugServer) StepOut(ctx context.Context, request mcp.CallToolReques
 	return newToolResultJSON(state)
 }
 
-// EvalVariable handles the examine_variable command
 func (s *MCPDebugServer) EvalVariable(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	logger.Debug("Received examine_variable request")
+	logger.Debug("Received evaluate_variable request")
 
 	if !s.debugClient.IsConnected() {
 		return newErrorResult("no active debug session, please launch or attach first"), nil
@@ -494,7 +434,6 @@ func (s *MCPDebugServer) EvalVariable(ctx context.Context, request mcp.CallToolR
 	return newToolResultJSON(response)
 }
 
-// GetDebuggerOutput handles the get_debugger_output command
 func (s *MCPDebugServer) GetDebuggerOutput(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	logger.Debug("Received get_debugger_output request")
 
@@ -507,7 +446,6 @@ func (s *MCPDebugServer) GetDebuggerOutput(ctx context.Context, request mcp.Call
 	return newToolResultJSON(output)
 }
 
-// DebugTest handles the debug_test command
 func (s *MCPDebugServer) DebugTest(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	logger.Debug("Received debug_test request")
 

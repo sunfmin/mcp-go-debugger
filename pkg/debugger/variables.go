@@ -10,24 +10,6 @@ import (
 	"github.com/sunfmin/mcp-go-debugger/pkg/types"
 )
 
-// VariableInfo represents information about a variable
-type VariableInfo struct {
-	Name     string         `json:"name"`
-	Type     string         `json:"type"`
-	Value    string         `json:"value"`
-	Children []VariableInfo `json:"children,omitempty"`
-	Address  uint64         `json:"address,omitempty"`
-	Kind     string         `json:"kind,omitempty"`
-	Length   int64          `json:"length,omitempty"`
-}
-
-// ScopeVariables holds variables from different scopes
-type ScopeVariables struct {
-	Local   []*types.Variable `json:"local"`
-	Args    []*types.Variable `json:"args"`
-	Package []*types.Variable `json:"package,omitempty"`
-}
-
 // EvalVariable evaluates a variable expression
 func (c *Client) EvalVariable(name string, depth int) types.EvalVariableResponse {
 	if c.client == nil {
@@ -95,68 +77,6 @@ func (c *Client) EvalVariable(name string, depth int) types.EvalVariableResponse
 	}
 
 	return createEvalVariableResponse(debugState, variable, function, pkg, locals, nil)
-}
-
-// ListScopeVariables returns all variables in the current scope
-func (c *Client) ListScopeVariables(depth int) types.EvalVariableResponse {
-	if c.client == nil {
-		return createEvalVariableResponse(nil, nil, "", "", nil, fmt.Errorf("no active debug session"))
-	}
-
-	// Get current state for context
-	state, err := c.client.GetState()
-	if err != nil {
-		return createEvalVariableResponse(nil, nil, "", "", nil, fmt.Errorf("failed to get state: %v", err))
-	}
-
-	debugState := convertToDebuggerState(state)
-
-	if state.SelectedGoroutine == nil {
-		return createEvalVariableResponse(debugState, nil, "", "", nil, fmt.Errorf("no goroutine selected"))
-	}
-
-	// Get local variables
-	localVars, err := c.client.ListLocalVariables(api.EvalScope{
-		GoroutineID: state.SelectedGoroutine.ID,
-		Frame:       0,
-	}, api.LoadConfig{
-		FollowPointers:     true,
-		MaxVariableRecurse: depth,
-		MaxStringLen:       1024,
-		MaxArrayValues:     100,
-	})
-
-	if err != nil {
-		return createEvalVariableResponse(debugState, nil, "", "", nil, fmt.Errorf("failed to list local variables: %v", err))
-	}
-
-	// Convert to our type
-	var locals []string
-	var mainVar *types.Variable
-
-	for _, v := range localVars {
-		locals = append(locals, v.Name)
-		if mainVar == nil {
-			mainVar = &types.Variable{
-				DelveVar: &v,
-				Name:     v.Name,
-				Value:    v.Value,
-				Type:     v.Type,
-				Kind:     getVariableKind(&v),
-				TypeInfo: getTypeInfo(&v),
-				Summary:  fmt.Sprintf("%s = %s", v.Name, v.Value),
-			}
-		}
-	}
-
-	// Get function and package info
-	var function, pkg string
-	if state.CurrentThread != nil && state.CurrentThread.Function != nil {
-		function = state.CurrentThread.Function.Name()
-		pkg = getPackageName(state.CurrentThread)
-	}
-
-	return createEvalVariableResponse(debugState, mainVar, function, pkg, locals, nil)
 }
 
 // Helper functions for variable information

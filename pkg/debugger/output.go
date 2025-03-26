@@ -48,18 +48,3 @@ func (c *Client) GetDebuggerOutput() types.DebuggerOutputResponse {
 		Stderr:  stderr,
 	}
 }
-
-// ClearOutput clears the captured stdout and stderr buffers
-func (c *Client) ClearOutput() {
-	c.outputMutex.Lock()
-	defer c.outputMutex.Unlock()
-	c.stdout.Reset()
-	c.stderr.Reset()
-}
-
-// GetCapturedOutput returns the current stdout and stderr as strings
-func (c *Client) GetCapturedOutput() (string, string) {
-	c.outputMutex.Lock()
-	defer c.outputMutex.Unlock()
-	return c.stdout.String(), c.stderr.String()
-}

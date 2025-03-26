@@ -2,8 +2,6 @@ package debugger
 
 import (
 	"fmt"
-	"path/filepath"
-	"runtime"
 	"strings"
 	"time"
 
@@ -478,19 +476,4 @@ func createDebugTestResponse(state *types.DebuggerState, testFile string, testNa
 		Process:     process,
 		TestFlags:   testFlags,
 	}
-}
-
-// Helper functions for response creation
-func getProgramPackage(file string) string {
-	// Simple implementation - in real code this would parse the Go file
-	return filepath.Base(filepath.Dir(file))
-}
-
-func getGoVersion() string {
-	return runtime.Version()
-}
-
-func getTestSuite(testFile string) string {
-	// Simple implementation - in real code this would parse the test file
-	return filepath.Base(testFile)
 }
