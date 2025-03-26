@@ -2,6 +2,7 @@ package debugger
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/sunfmin/mcp-go-debugger/pkg/types"
@@ -18,33 +19,102 @@ type OutputMessage struct {
 func (c *Client) GetDebuggerOutput() types.DebuggerOutputResponse {
 	if c.client == nil {
 		return types.DebuggerOutputResponse{
+			Status: "error",
 			Context: types.DebugContext{
+				Timestamp:     time.Now(),
 				LastOperation: "get_output",
 				ErrorMessage:  "no active debug session",
+				Status:        "disconnected",
+				Summary:       "No active debug session",
 			},
 		}
 	}
 
-	state, err := c.client.GetState()
-	if err != nil {
-		return types.DebuggerOutputResponse{
-			Context: types.DebugContext{
-				LastOperation: "get_output",
-				ErrorMessage:  fmt.Sprintf("failed to get state: %v", err),
-			},
-		}
-	}
-
-	debugState := convertToDebuggerState(state)
-
+	// Get the captured output regardless of state
 	c.outputMutex.Lock()
 	stdout := c.stdout.String()
 	stderr := c.stderr.String()
 	c.outputMutex.Unlock()
 
-	return types.DebuggerOutputResponse{
-		Context: createDebugContext(debugState),
-		Stdout:  stdout,
-		Stderr:  stderr,
+	// Create a summary of the output for LLM
+	outputSummary := generateOutputSummary(stdout, stderr)
+
+	// Try to get state, but don't fail if unable
+	state, err := c.client.GetState()
+	if err != nil {
+		// Process might have exited, but we still want to return the captured output
+		return types.DebuggerOutputResponse{
+			Status: "success",
+			Context: types.DebugContext{
+				Timestamp:     time.Now(),
+				LastOperation: "get_output",
+				ErrorMessage:  fmt.Sprintf("state unavailable: %v", err),
+				Status:        "exited",
+				Summary:       "Process has exited but output was captured",
+			},
+			Stdout:        stdout,
+			Stderr:        stderr,
+			OutputSummary: outputSummary,
+		}
 	}
+
+	debugState := convertToDebuggerState(state)
+	context := createDebugContext(debugState)
+	context.LastOperation = "get_output"
+
+	return types.DebuggerOutputResponse{
+		Status:        "success",
+		Context:       context,
+		Stdout:        stdout,
+		Stderr:        stderr,
+		OutputSummary: outputSummary,
+	}
+}
+
+// generateOutputSummary creates a concise summary of stdout and stderr for LLM use
+func generateOutputSummary(stdout, stderr string) string {
+	// If no output, return a simple message
+	if stdout == "" && stderr == "" {
+		return "No program output captured"
+	}
+
+	var summary strings.Builder
+
+	// Add stdout summary
+	if stdout != "" {
+		lines := strings.Split(strings.TrimSpace(stdout), "\n")
+		if len(lines) <= 5 {
+			summary.WriteString(fmt.Sprintf("Program output (%d lines): %s", len(lines), stdout))
+		} else {
+			// Summarize with first 3 and last 2 lines
+			summary.WriteString(fmt.Sprintf("Program output (%d lines): \n", len(lines)))
+			for i := 0; i < 3 && i < len(lines); i++ {
+				summary.WriteString(fmt.Sprintf("  %s\n", lines[i]))
+			}
+			summary.WriteString("  ... more lines ...\n")
+			for i := len(lines) - 2; i < len(lines); i++ {
+				summary.WriteString(fmt.Sprintf("  %s\n", lines[i]))
+			}
+		}
+	}
+
+	// Add stderr if present
+	if stderr != "" {
+		if summary.Len() > 0 {
+			summary.WriteString("\n")
+		}
+		lines := strings.Split(strings.TrimSpace(stderr), "\n")
+		if len(lines) <= 3 {
+			summary.WriteString(fmt.Sprintf("Error output (%d lines): %s", len(lines), stderr))
+		} else {
+			summary.WriteString(fmt.Sprintf("Error output (%d lines): \n", len(lines)))
+			for i := 0; i < 2 && i < len(lines); i++ {
+				summary.WriteString(fmt.Sprintf("  %s\n", lines[i]))
+			}
+			summary.WriteString("  ... more lines ...\n")
+			summary.WriteString(fmt.Sprintf("  %s\n", lines[len(lines)-1]))
+		}
+	}
+
+	return summary.String()
 }

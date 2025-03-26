@@ -250,7 +250,34 @@ func TestDebugWorkflow(t *testing.T) {
 	// Check for captured output
 	outputRequest := mcp.CallToolRequest{}
 	outputResult, err := server.GetDebuggerOutput(ctx, outputRequest)
-	expectSuccess(t, outputResult, err, &types.DebuggerOutputResponse{})
+	var outputResponse = &types.DebuggerOutputResponse{}
+	expectSuccess(t, outputResult, err, outputResponse)
+
+	// Verify that output was captured
+	if outputResponse.Stdout == "" {
+		t.Errorf("Expected stdout to be captured, but got empty output")
+	}
+
+	// Verify output contains expected strings
+	if !strings.Contains(outputResponse.Stdout, "Starting debug test program") {
+		t.Errorf("Expected stdout to contain startup message, got: %s", outputResponse.Stdout)
+	}
+
+	if !strings.Contains(outputResponse.Stdout, "Arguments:") {
+		t.Errorf("Expected stdout to contain arguments message, got: %s", outputResponse.Stdout)
+	}
+
+	// Verify output summary is present and contains expected content
+	if outputResponse.OutputSummary == "" {
+		t.Errorf("Expected output summary to be present, but got empty summary")
+	}
+
+	if !strings.Contains(outputResponse.OutputSummary, "Program output") {
+		t.Errorf("Expected output summary to mention program output, got: %s", outputResponse.OutputSummary)
+	}
+	
+	t.Logf("Captured output: %s", outputResponse.Stdout)
+	t.Logf("Output summary: %s", outputResponse.OutputSummary)
 
 	// Clean up by closing the debug session
 	closeRequest := mcp.CallToolRequest{}
