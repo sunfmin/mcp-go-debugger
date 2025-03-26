@@ -23,13 +23,13 @@ type DebugContext struct {
 	OperationSummary string     `json:"operationSummary,omitempty"` // Summary of current operation for LLM
 	NextSteps        []string   `json:"nextSteps,omitempty"`        // Available next debugging actions
 	ProcessInfo      struct {
-		Pid             int      `json:"pid,omitempty"`              // Process ID when attached/launched
-		CommandLine     string   `json:"commandLine,omitempty"`      // Command line of the debugged process
-		Recording       bool     `json:"recording,omitempty"`        // Whether recording is in progress
-		CoreDumping     bool     `json:"coreDumping,omitempty"`     // Whether core dump is in progress
-		NextInProgress  bool     `json:"nextInProgress,omitempty"`   // Whether step operation is in progress
-		WatchOutOfScope int      `json:"watchOutOfScope,omitempty"` // Number of watchpoints that went out of scope
-		RecordingPos    string   `json:"recordingPos,omitempty"`    // Current position in recording
+		Pid             int    `json:"pid,omitempty"`             // Process ID when attached/launched
+		CommandLine     string `json:"commandLine,omitempty"`     // Command line of the debugged process
+		Recording       bool   `json:"recording,omitempty"`       // Whether recording is in progress
+		CoreDumping     bool   `json:"coreDumping,omitempty"`     // Whether core dump is in progress
+		NextInProgress  bool   `json:"nextInProgress,omitempty"`  // Whether step operation is in progress
+		WatchOutOfScope int    `json:"watchOutOfScope,omitempty"` // Number of watchpoints that went out of scope
+		RecordingPos    string `json:"recordingPos,omitempty"`    // Current position in recording
 	} `json:"processInfo,omitempty"` // Process-specific information
 }
 
@@ -122,25 +122,6 @@ type Function struct {
 	Location    Location `json:"location"`          // Function location information
 }
 
-// DebuggerState represents the current state with LLM-friendly additions
-type DebuggerState struct {
-	// Internal Delve state - not exposed in JSON
-	DelveState *api.DebuggerState `json:"-"`
-
-	// LLM-friendly fields
-	Status            string     `json:"status"`              // Current state in human terms
-	CurrentThread     *Thread    `json:"thread,omitempty"`    // Current thread with readable info
-	SelectedGoroutine *Goroutine `json:"goroutine,omitempty"` // Current goroutine with readable info
-	Threads           []*Thread  `json:"threads,omitempty"`   // All threads
-	Running           bool       `json:"running"`             // Whether program is running
-	Exited            bool       `json:"exited"`              // Whether program has exited
-	ExitStatus        int        `json:"exitStatus"`          // Exit status if program has exited
-	Err               error      `json:"error,omitempty"`     // Any error that occurred
-	StateReason       string     `json:"reason,omitempty"`    // Why debugger is in this state
-	NextSteps         []string   `json:"nextSteps,omitempty"` // Possible next debugging actions
-	Summary           string     `json:"summary"`             // Brief state description for LLM
-}
-
 // DebuggerOutput represents captured program output with LLM-friendly additions
 type DebuggerOutput struct {
 	// Internal Delve state - not exposed in JSON
@@ -164,11 +145,15 @@ type LaunchResponse struct {
 }
 
 type BreakpointResponse struct {
-	Status         string       `json:"status"`
-	Context        DebugContext `json:"context"`
-	Breakpoint     Breakpoint   `json:"breakpoint"`     // The affected breakpoint
-	AllBreakpoints []Breakpoint `json:"allBreakpoints"` // All current breakpoints
-	ScopeVariables []Variable   `json:"scopeVariables"` // Variables in scope at breakpoint
+	Status     string       `json:"status"`
+	Context    DebugContext `json:"context"`
+	Breakpoint Breakpoint   `json:"breakpoint"` // The affected breakpoint
+}
+
+type BreakpointListResponse struct {
+	Status      string       `json:"status"`
+	Context     DebugContext `json:"context"`
+	Breakpoints []Breakpoint `json:"breakpoints"` // All current breakpoints
 }
 
 type StepResponse struct {
@@ -192,11 +177,8 @@ type EvalVariableResponse struct {
 }
 
 type ContinueResponse struct {
-	Status        string       `json:"status"`
-	Context       DebugContext `json:"context"`
-	StoppedAt     *Location    `json:"stoppedAt,omitempty"`     // Location where execution stopped
-	StopReason    string       `json:"stopReason,omitempty"`    // Why execution stopped
-	HitBreakpoint *Breakpoint  `json:"hitBreakpoint,omitempty"` // Breakpoint that was hit
+	Status  string       `json:"status"`
+	Context DebugContext `json:"context"`
 }
 
 type CloseResponse struct {

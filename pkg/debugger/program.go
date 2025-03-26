@@ -133,8 +133,7 @@ func (c *Client) LaunchProgram(program string, args []string) types.LaunchRespon
 				c.target = absPath
 				connected = true
 
-				debugState := convertToDebuggerState(state)
-				return createLaunchResponse(debugState, program, args, nil)
+				return createLaunchResponse(state, program, args, nil)
 			}
 			time.Sleep(100 * time.Millisecond)
 		}
@@ -243,8 +242,7 @@ func (c *Client) AttachToProcess(pid int) types.AttachResponse {
 				logger.Debug("Successfully attached to process with PID: %d", pid)
 
 				// Get initial state
-				debugState := convertToDebuggerState(state)
-				return createAttachResponse(debugState, pid, "", nil, nil)
+				return createAttachResponse(state, pid, "", nil, nil)
 			} else {
 				// Failed, wait briefly and retry
 				time.Sleep(100 * time.Millisecond)
@@ -392,10 +390,7 @@ func (c *Client) DebugSourceFile(sourceFile string, args []string) types.DebugSo
 	// Store the binary path for cleanup
 	c.target = debugBinary
 
-	state := &types.DebuggerState{
-		DelveState: response.Context.DelveState,
-	}
-	return createDebugSourceResponse(state, sourceFile, debugBinary, args, nil)
+	return createDebugSourceResponse(response.Context.DelveState, sourceFile, debugBinary, args, nil)
 }
 
 // DebugTest compiles and debugs a Go test function
@@ -459,8 +454,5 @@ func (c *Client) DebugTest(testFilePath string, testName string, testFlags []str
 	// Store the binary path for cleanup
 	c.target = debugBinary
 
-	state := &types.DebuggerState{
-		DelveState: response.Context.DelveState,
-	}
-	return createDebugTestResponse(state, testFilePath, testName, debugBinary, nil, testFlags, nil)
+	return createDebugTestResponse(response.Context.DelveState, testFilePath, testName, debugBinary, nil, testFlags, nil)
 }

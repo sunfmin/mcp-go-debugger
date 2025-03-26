@@ -144,15 +144,15 @@ func TestDebugWorkflow(t *testing.T) {
 	// Step 3: List breakpoints to verify
 	listBreakpointsRequest := mcp.CallToolRequest{}
 	listResult, err := server.ListBreakpoints(ctx, listBreakpointsRequest)
-	listBreakpointsResponse := types.BreakpointResponse{}
+	listBreakpointsResponse := types.BreakpointListResponse{}
 	expectSuccess(t, listResult, err, &listBreakpointsResponse)
 
-	if len(listBreakpointsResponse.AllBreakpoints) == 0 {
+	if len(listBreakpointsResponse.Breakpoints) == 0 {
 		t.Errorf("Expected at least one breakpoint, got none")
 	}
 
 	// Remember the breakpoint ID for later removal
-	firstBreakpointID := listBreakpointsResponse.AllBreakpoints[0].ID
+	firstBreakpointID := listBreakpointsResponse.Breakpoints[0].ID
 
 	// Step 4: Set another breakpoint at the countVarLine
 	setBreakpointRequest2 := mcp.CallToolRequest{}
@@ -275,7 +275,7 @@ func TestDebugWorkflow(t *testing.T) {
 	if !strings.Contains(outputResponse.OutputSummary, "Program output") {
 		t.Errorf("Expected output summary to mention program output, got: %s", outputResponse.OutputSummary)
 	}
-	
+
 	t.Logf("Captured output: %s", outputResponse.Stdout)
 	t.Logf("Output summary: %s", outputResponse.OutputSummary)
 

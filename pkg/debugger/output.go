@@ -58,8 +58,7 @@ func (c *Client) GetDebuggerOutput() types.DebuggerOutputResponse {
 		}
 	}
 
-	debugState := convertToDebuggerState(state)
-	context := createDebugContext(debugState)
+	context := createDebugContext(state)
 	context.LastOperation = "get_output"
 
 	return types.DebuggerOutputResponse{

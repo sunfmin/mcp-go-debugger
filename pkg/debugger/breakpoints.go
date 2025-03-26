@@ -2,6 +2,7 @@ package debugger
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/go-delve/delve/service/api"
 	"github.com/sunfmin/mcp-go-debugger/pkg/logger"
@@ -11,7 +12,15 @@ import (
 // SetBreakpoint sets a breakpoint at the specified file and line
 func (c *Client) SetBreakpoint(file string, line int) types.BreakpointResponse {
 	if c.client == nil {
-		return createBreakpointResponse(nil, nil, nil, nil, fmt.Errorf("no active debug session"))
+		return types.BreakpointResponse{
+			Status: "error",
+			Context: types.DebugContext{
+				ErrorMessage: "no active debug session",
+				Status:      "disconnected",
+				Summary:     "No active debug session",
+				Timestamp:   getCurrentTimestamp(),
+			},
+		}
 	}
 
 	logger.Debug("Setting breakpoint at %s:%d", file, line)
@@ -21,7 +30,15 @@ func (c *Client) SetBreakpoint(file string, line int) types.BreakpointResponse {
 	})
 
 	if err != nil {
-		return createBreakpointResponse(nil, nil, nil, nil, fmt.Errorf("failed to set breakpoint: %v", err))
+		return types.BreakpointResponse{
+			Status: "error",
+			Context: types.DebugContext{
+				ErrorMessage: fmt.Sprintf("failed to set breakpoint: %v", err),
+				Status:      "error",
+				Summary:     fmt.Sprintf("Failed to set breakpoint at %s:%d", file, line),
+				Timestamp:   getCurrentTimestamp(),
+			},
+		}
 	}
 
 	// Get current state for context
@@ -29,11 +46,6 @@ func (c *Client) SetBreakpoint(file string, line int) types.BreakpointResponse {
 	if err != nil {
 		logger.Debug("Warning: Failed to get state after setting breakpoint: %v", err)
 	}
-
-	debugState := convertToDebuggerState(&api.DebuggerState{
-		CurrentThread: state.CurrentThread,
-		Threads:      state.Threads,
-	})
 
 	breakpoint := &types.Breakpoint{
 		DelveBreakpoint: bp,
@@ -50,24 +62,41 @@ func (c *Client) SetBreakpoint(file string, line int) types.BreakpointResponse {
 		HitCount:    uint64(bp.TotalHitCount),
 	}
 
-	// Get all breakpoints
-	allBps, err := c.ListBreakpoints()
-	if err != nil {
-		logger.Debug("Warning: Failed to list breakpoints: %v", err)
-	}
+	context := createDebugContext(state)
+	context.LastOperation = "set_breakpoint"
 
-	return createBreakpointResponse(debugState, breakpoint, allBps, nil, nil)
+	return types.BreakpointResponse{
+		Status:     "success",
+		Context:    context,
+		Breakpoint: *breakpoint,
+	}
 }
 
 // ListBreakpoints returns all currently set breakpoints
-func (c *Client) ListBreakpoints() ([]types.Breakpoint, error) {
+func (c *Client) ListBreakpoints() types.BreakpointListResponse {
 	if c.client == nil {
-		return nil, fmt.Errorf("no active debug session")
+		return types.BreakpointListResponse{
+			Status: "error",
+			Context: types.DebugContext{
+				ErrorMessage: "no active debug session",
+				Status:      "disconnected",
+				Summary:     "No active debug session",
+				Timestamp:   getCurrentTimestamp(),
+			},
+		}
 	}
 
 	bps, err := c.client.ListBreakpoints(false)
 	if err != nil {
-		return nil, fmt.Errorf("failed to list breakpoints: %v", err)
+		return types.BreakpointListResponse{
+			Status: "error",
+			Context: types.DebugContext{
+				ErrorMessage: fmt.Sprintf("failed to list breakpoints: %v", err),
+				Status:      "error",
+				Summary:     "Failed to list breakpoints",
+				Timestamp:   getCurrentTimestamp(),
+			},
+		}
 	}
 
 	var breakpoints []types.Breakpoint
@@ -88,37 +117,82 @@ func (c *Client) ListBreakpoints() ([]types.Breakpoint, error) {
 		})
 	}
 
-	return breakpoints, nil
+	// Get current state for context
+	state, err := c.client.GetState()
+	if err != nil {
+		logger.Debug("Warning: Failed to get state while listing breakpoints: %v", err)
+	}
+
+	context := createDebugContext(state)
+	context.LastOperation = "list_breakpoints"
+
+	return types.BreakpointListResponse{
+		Status:      "success",
+		Context:     context,
+		Breakpoints: breakpoints,
+	}
 }
 
 // RemoveBreakpoint removes a breakpoint by its ID
 func (c *Client) RemoveBreakpoint(id int) types.BreakpointResponse {
 	if c.client == nil {
-		return createBreakpointResponse(nil, nil, nil, nil, fmt.Errorf("no active debug session"))
+		return types.BreakpointResponse{
+			Status: "error",
+			Context: types.DebugContext{
+				ErrorMessage: "no active debug session",
+				Status:      "disconnected",
+				Summary:     "No active debug session",
+				Timestamp:   getCurrentTimestamp(),
+			},
+		}
 	}
 
 	// Get breakpoint info before removing
-	bps, err := c.ListBreakpoints()
+	bps, err := c.client.ListBreakpoints(false)
 	if err != nil {
-		return createBreakpointResponse(nil, nil, nil, nil, fmt.Errorf("failed to get breakpoint info: %v", err))
+		return types.BreakpointResponse{
+			Status: "error",
+			Context: types.DebugContext{
+				ErrorMessage: fmt.Sprintf("failed to get breakpoint info: %v", err),
+				Status:      "error",
+				Summary:     "Failed to get breakpoint information",
+				Timestamp:   getCurrentTimestamp(),
+			},
+		}
 	}
 
-	var targetBp *types.Breakpoint
+	var targetBp *api.Breakpoint
 	for _, bp := range bps {
 		if bp.ID == id {
-			targetBp = &bp
+			targetBp = bp
 			break
 		}
 	}
 
 	if targetBp == nil {
-		return createBreakpointResponse(nil, nil, nil, nil, fmt.Errorf("breakpoint %d not found", id))
+		return types.BreakpointResponse{
+			Status: "error",
+			Context: types.DebugContext{
+				ErrorMessage: fmt.Sprintf("breakpoint %d not found", id),
+				Status:      "error",
+				Summary:     fmt.Sprintf("Breakpoint %d not found", id),
+				Timestamp:   getCurrentTimestamp(),
+			},
+		}
 	}
 
-	logger.Debug("Removing breakpoint %d at %s:%d", id, targetBp.Location.File, targetBp.Location.Line)
+	logger.Debug("Removing breakpoint %d at %s:%d", id, targetBp.File, targetBp.Line)
 	_, err = c.client.ClearBreakpoint(id)
 	if err != nil {
-		return createBreakpointResponse(nil, targetBp, bps, nil, fmt.Errorf("failed to remove breakpoint: %v", err))
+		return types.BreakpointResponse{
+			Status: "error",
+			Context: types.DebugContext{
+				ErrorMessage: fmt.Sprintf("failed to remove breakpoint: %v", err),
+				Status:      "error",
+				Summary:     fmt.Sprintf("Failed to remove breakpoint %d", id),
+				Timestamp:   getCurrentTimestamp(),
+			},
+		}
 	}
 
 	// Get current state for context
@@ -127,16 +201,31 @@ func (c *Client) RemoveBreakpoint(id int) types.BreakpointResponse {
 		logger.Debug("Warning: Failed to get state after removing breakpoint: %v", err)
 	}
 
-	debugState := convertToDebuggerState(&api.DebuggerState{
-		CurrentThread: state.CurrentThread,
-		Threads:      state.Threads,
-	})
-
-	// Get updated breakpoint list
-	updatedBps, err := c.ListBreakpoints()
-	if err != nil {
-		logger.Debug("Warning: Failed to list breakpoints after removal: %v", err)
+	breakpoint := types.Breakpoint{
+		DelveBreakpoint: targetBp,
+		ID:             targetBp.ID,
+		Status:         "removed",
+		Location: types.Location{
+			File:     targetBp.File,
+			Line:     targetBp.Line,
+			Function: getFunctionNameFromBreakpoint(targetBp),
+			Package:  getPackageNameFromBreakpoint(targetBp),
+			Summary:  fmt.Sprintf("At %s:%d in %s", targetBp.File, targetBp.Line, getFunctionNameFromBreakpoint(targetBp)),
+		},
+		Description: targetBp.Name,
+		HitCount:    uint64(targetBp.TotalHitCount),
 	}
 
-	return createBreakpointResponse(debugState, targetBp, updatedBps, nil, nil)
+	context := createDebugContext(state)
+	context.LastOperation = "remove_breakpoint"
+
+	return types.BreakpointResponse{
+		Status:     "success",
+		Context:    context,
+		Breakpoint: breakpoint,
+	}
+}
+
+func getCurrentTimestamp() time.Time {
+	return time.Now()
 }

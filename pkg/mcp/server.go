@@ -9,7 +9,6 @@ import (
 	"github.com/mark3labs/mcp-go/server"
 	"github.com/sunfmin/mcp-go-debugger/pkg/debugger"
 	"github.com/sunfmin/mcp-go-debugger/pkg/logger"
-	"github.com/sunfmin/mcp-go-debugger/pkg/types"
 )
 
 type MCPDebugServer struct {
@@ -307,21 +306,7 @@ func (s *MCPDebugServer) ListBreakpoints(ctx context.Context, request mcp.CallTo
 		return newErrorResult("no active debug session, please launch or attach first"), nil
 	}
 
-	breakpoints, err := s.debugClient.ListBreakpoints()
-	if err != nil {
-		logger.Error("Failed to list breakpoints", "error", err)
-		return newErrorResult("failed to list breakpoints: %v", err), nil
-	}
-
-	bps := make([]types.Breakpoint, len(breakpoints))
-	for i, bp := range breakpoints {
-		bps[i] = bp
-	}
-
-	response := types.BreakpointResponse{
-		Status:         "success",
-		AllBreakpoints: bps,
-	}
+	response := s.debugClient.ListBreakpoints()
 
 	return newToolResultJSON(response)
 }
@@ -470,7 +455,7 @@ func (s *MCPDebugServer) DebugTest(ctx context.Context, request mcp.CallToolRequ
 	}
 
 	response := s.debugClient.DebugTest(testfile, testname, testflags)
-	
+
 	return newToolResultJSON(response)
 }
 

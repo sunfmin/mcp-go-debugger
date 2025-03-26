@@ -22,10 +22,8 @@ func (c *Client) EvalVariable(name string, depth int) types.EvalVariableResponse
 		return createEvalVariableResponse(nil, nil, "", "", nil, fmt.Errorf("failed to get state: %v", err))
 	}
 
-	debugState := convertToDebuggerState(state)
-
 	if state.SelectedGoroutine == nil {
-		return createEvalVariableResponse(debugState, nil, "", "", nil, fmt.Errorf("no goroutine selected"))
+		return createEvalVariableResponse(state, nil, "", "", nil, fmt.Errorf("no goroutine selected"))
 	}
 
 	// Evaluate the variable
@@ -40,7 +38,7 @@ func (c *Client) EvalVariable(name string, depth int) types.EvalVariableResponse
 	})
 
 	if err != nil {
-		return createEvalVariableResponse(debugState, nil, "", "", nil, fmt.Errorf("failed to evaluate variable %s: %v", name, err))
+		return createEvalVariableResponse(state, nil, "", "", nil, fmt.Errorf("failed to evaluate variable %s: %v", name, err))
 	}
 
 	// Convert to our type
@@ -76,7 +74,7 @@ func (c *Client) EvalVariable(name string, depth int) types.EvalVariableResponse
 		}
 	}
 
-	return createEvalVariableResponse(debugState, variable, function, pkg, locals, nil)
+	return createEvalVariableResponse(state, variable, function, pkg, locals, nil)
 }
 
 // Helper functions for variable information
