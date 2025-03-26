@@ -17,16 +17,16 @@ import (
 
 // Client encapsulates the Delve debug client functionality
 type Client struct {
-	client     *rpc2.RPCClient
-	target     string
-	pid        int
-	server     *rpccommon.ServerImpl
-	tempDir    string
-	stdout     bytes.Buffer       // Buffer for captured stdout
-	stderr     bytes.Buffer       // Buffer for captured stderr
-	outputChan chan OutputMessage // Channel for captured output
-	stopOutput chan struct{}      // Channel to signal stopping output capture
-	outputMutex sync.Mutex        // Mutex for synchronizing output buffer access
+	client      *rpc2.RPCClient
+	target      string
+	pid         int
+	server      *rpccommon.ServerImpl
+	tempDir     string
+	stdout      bytes.Buffer       // Buffer for captured stdout
+	stderr      bytes.Buffer       // Buffer for captured stderr
+	outputChan  chan OutputMessage // Channel for captured output
+	stopOutput  chan struct{}      // Channel to signal stopping output capture
+	outputMutex sync.Mutex         // Mutex for synchronizing output buffer access
 }
 
 // NewClient creates a new Delve client wrapper
@@ -35,11 +35,6 @@ func NewClient() *Client {
 		outputChan: make(chan OutputMessage, 100), // Buffer for output messages
 		stopOutput: make(chan struct{}),
 	}
-}
-
-// IsConnected returns whether a debug session is active
-func (c *Client) IsConnected() bool {
-	return c.client != nil
 }
 
 // GetTarget returns the target program being debugged

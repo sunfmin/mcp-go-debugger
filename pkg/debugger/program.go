@@ -395,18 +395,23 @@ func (c *Client) DebugSourceFile(sourceFile string, args []string) types.DebugSo
 
 // DebugTest compiles and debugs a Go test function
 func (c *Client) DebugTest(testFilePath string, testName string, testFlags []string) types.DebugTestResponse {
+	response := types.DebugTestResponse{
+		TestName:  testName,
+		TestFile:  testFilePath,
+		TestFlags: testFlags,
+	}
 	if c.client != nil {
-		return createDebugTestResponse(nil, testFilePath, testName, "", nil, testFlags, fmt.Errorf("debug session already active"))
+		return createDebugTestResponse(nil, &response, fmt.Errorf("debug session already active"))
 	}
 
 	// Ensure test file exists
 	absPath, err := filepath.Abs(testFilePath)
 	if err != nil {
-		return createDebugTestResponse(nil, testFilePath, testName, "", nil, testFlags, fmt.Errorf("failed to get absolute path: %v", err))
+		return createDebugTestResponse(nil, &response, fmt.Errorf("failed to get absolute path: %v", err))
 	}
 
 	if _, err := os.Stat(absPath); os.IsNotExist(err) {
-		return createDebugTestResponse(nil, testFilePath, testName, "", nil, testFlags, fmt.Errorf("test file not found: %s", absPath))
+		return createDebugTestResponse(nil, &response, fmt.Errorf("test file not found: %s", absPath))
 	}
 
 	// Get the directory of the test file
@@ -418,13 +423,31 @@ func (c *Client) DebugTest(testFilePath string, testName string, testFlags []str
 
 	logger.Debug("Compiling test package in %s to %s", testDir, debugBinary)
 
+	// Save current directory
+	currentDir, err := os.Getwd()
+	if err != nil {
+		return createDebugTestResponse(nil, &response, fmt.Errorf("failed to get current directory: %v", err))
+	}
+
+	// Change to test directory
+	if err := os.Chdir(testDir); err != nil {
+		return createDebugTestResponse(nil, &response, fmt.Errorf("failed to change to test directory: %v", err))
+	}
+
+	// Ensure we change back to original directory
+	defer func() {
+		if err := os.Chdir(currentDir); err != nil {
+			logger.Error("Failed to restore original directory: %v", err)
+		}
+	}()
+
 	// Compile the test package with output capture using test-specific build flags
 	cmd, output, err := gobuild.GoTestBuildCombinedOutput(debugBinary, []string{testDir}, defaultTestBuildFlags)
+	response.BuildCommand = cmd
+	response.BuildOutput = string(output)
 	if err != nil {
-		logger.Debug("Build command: %s", cmd)
-		logger.Debug("Build output: %s", string(output))
 		gobuild.Remove(debugBinary)
-		return createDebugTestResponse(nil, testFilePath, testName, debugBinary, nil, testFlags, fmt.Errorf("failed to compile test package: %v\nOutput: %s", err, string(output)))
+		return createDebugTestResponse(nil, &response, fmt.Errorf("failed to compile test package: %v\nOutput: %s", err, string(output)))
 	}
 
 	// Create args to run the specific test
@@ -445,14 +468,14 @@ func (c *Client) DebugTest(testFilePath string, testName string, testFlags []str
 
 	logger.Debug("Launching test binary with debugger, test name: %s, args: %v", testName, args)
 	// Launch the compiled test binary with the debugger
-	response := c.LaunchProgram(debugBinary, args)
-	if response.Context.ErrorMessage != "" {
+	response2 := c.LaunchProgram(debugBinary, args)
+	if response2.Context.ErrorMessage != "" {
 		gobuild.Remove(debugBinary)
-		return createDebugTestResponse(nil, testFilePath, testName, debugBinary, nil, testFlags, fmt.Errorf(response.Context.ErrorMessage))
+		return createDebugTestResponse(nil, &response, fmt.Errorf(response.Context.ErrorMessage))
 	}
 
 	// Store the binary path for cleanup
 	c.target = debugBinary
 
-	return createDebugTestResponse(response.Context.DelveState, testFilePath, testName, debugBinary, nil, testFlags, nil)
+	return createDebugTestResponse(response2.Context.DelveState, &response, nil)
 }

@@ -234,14 +234,6 @@ func (s *MCPDebugServer) Launch(ctx context.Context, request mcp.CallToolRequest
 		}
 	}
 
-	if s.debugClient.IsConnected() {
-		_, err := s.debugClient.Close()
-		if err != nil {
-			logger.Error("Failed to close existing debug session", "error", err)
-			return newErrorResult("failed to close existing debug session: %v", err), nil
-		}
-	}
-
 	response := s.debugClient.LaunchProgram(program, args)
 
 	return newToolResultJSON(response)
@@ -253,14 +245,6 @@ func (s *MCPDebugServer) Attach(ctx context.Context, request mcp.CallToolRequest
 	pidFloat := request.Params.Arguments["pid"].(float64)
 	pid := int(pidFloat)
 
-	if s.debugClient.IsConnected() {
-		_, err := s.debugClient.Close()
-		if err != nil {
-			logger.Error("Failed to close existing debug session", "error", err)
-			return newErrorResult("failed to close existing debug session: %v", err), nil
-		}
-	}
-
 	response := s.debugClient.AttachToProcess(pid)
 
 	return newToolResultJSON(response)
@@ -268,10 +252,6 @@ func (s *MCPDebugServer) Attach(ctx context.Context, request mcp.CallToolRequest
 
 func (s *MCPDebugServer) Close(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	logger.Debug("Received close request")
-
-	if !s.debugClient.IsConnected() {
-		return mcp.NewToolResultText("No active debug session to close"), nil
-	}
 
 	response, err := s.debugClient.Close()
 	if err != nil {
@@ -287,10 +267,6 @@ func (s *MCPDebugServer) Close(ctx context.Context, request mcp.CallToolRequest)
 func (s *MCPDebugServer) SetBreakpoint(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	logger.Debug("Received set_breakpoint request")
 
-	if !s.debugClient.IsConnected() {
-		return newErrorResult("no active debug session, please launch or attach first"), nil
-	}
-
 	file := request.Params.Arguments["file"].(string)
 	line := int(request.Params.Arguments["line"].(float64))
 
@@ -302,10 +278,6 @@ func (s *MCPDebugServer) SetBreakpoint(ctx context.Context, request mcp.CallTool
 func (s *MCPDebugServer) ListBreakpoints(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	logger.Debug("Received list_breakpoints request")
 
-	if !s.debugClient.IsConnected() {
-		return newErrorResult("no active debug session, please launch or attach first"), nil
-	}
-
 	response := s.debugClient.ListBreakpoints()
 
 	return newToolResultJSON(response)
@@ -313,10 +285,6 @@ func (s *MCPDebugServer) ListBreakpoints(ctx context.Context, request mcp.CallTo
 
 func (s *MCPDebugServer) RemoveBreakpoint(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	logger.Debug("Received remove_breakpoint request")
-
-	if !s.debugClient.IsConnected() {
-		return newErrorResult("no active debug session, please launch or attach first"), nil
-	}
 
 	id := int(request.Params.Arguments["id"].(float64))
 
@@ -327,14 +295,6 @@ func (s *MCPDebugServer) RemoveBreakpoint(ctx context.Context, request mcp.CallT
 
 func (s *MCPDebugServer) DebugSourceFile(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	logger.Debug("Received debug_source_file request")
-
-	if s.debugClient.IsConnected() {
-		_, err := s.debugClient.Close()
-		if err != nil {
-			logger.Error("Failed to close existing debug session", "error", err)
-			return newErrorResult("failed to close existing debug session: %v", err), nil
-		}
-	}
 
 	file := request.Params.Arguments["file"].(string)
 
@@ -355,20 +315,12 @@ func (s *MCPDebugServer) DebugSourceFile(ctx context.Context, request mcp.CallTo
 func (s *MCPDebugServer) Continue(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	logger.Debug("Received continue request")
 
-	if !s.debugClient.IsConnected() {
-		return newErrorResult("no active debug session, please launch or attach first"), nil
-	}
-
 	state := s.debugClient.Continue()
 	return newToolResultJSON(state)
 }
 
 func (s *MCPDebugServer) Step(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	logger.Debug("Received step request")
-
-	if !s.debugClient.IsConnected() {
-		return newErrorResult("no active debug session, please launch or attach first"), nil
-	}
 
 	state := s.debugClient.Step()
 
@@ -378,10 +330,6 @@ func (s *MCPDebugServer) Step(ctx context.Context, request mcp.CallToolRequest) 
 func (s *MCPDebugServer) StepOver(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	logger.Debug("Received step_over request")
 
-	if !s.debugClient.IsConnected() {
-		return newErrorResult("no active debug session, please launch or attach first"), nil
-	}
-
 	state := s.debugClient.StepOver()
 
 	return newToolResultJSON(state)
@@ -390,20 +338,12 @@ func (s *MCPDebugServer) StepOver(ctx context.Context, request mcp.CallToolReque
 func (s *MCPDebugServer) StepOut(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	logger.Debug("Received step_out request")
 
-	if !s.debugClient.IsConnected() {
-		return newErrorResult("no active debug session, please launch or attach first"), nil
-	}
-
 	state := s.debugClient.StepOut()
 	return newToolResultJSON(state)
 }
 
 func (s *MCPDebugServer) EvalVariable(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	logger.Debug("Received evaluate_variable request")
-
-	if !s.debugClient.IsConnected() {
-		return newErrorResult("no active debug session, please launch or attach first"), nil
-	}
 
 	name := request.Params.Arguments["name"].(string)
 
@@ -422,10 +362,6 @@ func (s *MCPDebugServer) EvalVariable(ctx context.Context, request mcp.CallToolR
 func (s *MCPDebugServer) GetDebuggerOutput(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	logger.Debug("Received get_debugger_output request")
 
-	if !s.debugClient.IsConnected() {
-		return newErrorResult("no active debug session, please launch or attach first"), nil
-	}
-
 	output := s.debugClient.GetDebuggerOutput()
 
 	return newToolResultJSON(output)
@@ -433,14 +369,6 @@ func (s *MCPDebugServer) GetDebuggerOutput(ctx context.Context, request mcp.Call
 
 func (s *MCPDebugServer) DebugTest(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	logger.Debug("Received debug_test request")
-
-	if s.debugClient.IsConnected() {
-		_, err := s.debugClient.Close()
-		if err != nil {
-			logger.Error("Failed to close existing debug session", "error", err)
-			return newErrorResult("failed to close existing debug session: %v", err), nil
-		}
-	}
 
 	testfile := request.Params.Arguments["testfile"].(string)
 	testname := request.Params.Arguments["testname"].(string)

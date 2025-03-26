@@ -416,21 +416,15 @@ func createDebugSourceResponse(state *api.DebuggerState, sourceFile string, debu
 }
 
 // createDebugTestResponse creates a response for the debug test command
-func createDebugTestResponse(state *api.DebuggerState, testFile string, testName string, debugBinary string, process *types.Process, testFlags []string, err error) types.DebugTestResponse {
+func createDebugTestResponse(state *api.DebuggerState, response *types.DebugTestResponse, err error) types.DebugTestResponse {
 	context := createDebugContext(state)
 	context.Operation = "debug_test"
+	response.Context = &context
 
 	if err != nil {
 		context.ErrorMessage = err.Error()
+		response.Status = "error"
 	}
 
-	return types.DebugTestResponse{
-		Status:      "success",
-		Context:     &context,
-		TestFile:    testFile,
-		TestName:    testName,
-		DebugBinary: debugBinary,
-		Process:     process,
-		TestFlags:   testFlags,
-	}
+	return *response
 }

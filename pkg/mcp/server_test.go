@@ -411,7 +411,7 @@ func TestDebugTest(t *testing.T) {
 	}
 
 	debugResult, err := server.DebugTest(ctx, debugTestRequest)
-	expectSuccess(t, debugResult, err, &types.DebugSourceResponse{})
+	expectSuccess(t, debugResult, err, &types.DebugTestResponse{})
 
 	// Give the debugger time to initialize
 	time.Sleep(300 * time.Millisecond)

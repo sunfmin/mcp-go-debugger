@@ -173,13 +173,15 @@ type DebugSourceResponse struct {
 }
 
 type DebugTestResponse struct {
-	Status      string        `json:"status"`
-	Context     *DebugContext `json:"context"`
-	TestFile    string        `json:"testFile"`
-	TestName    string        `json:"testName"`
-	DebugBinary string        `json:"debugBinary"`
-	Process     *Process      `json:"process"`
-	TestFlags   []string      `json:"testFlags"`
+	Status       string        `json:"status"`
+	Context      *DebugContext `json:"context"`
+	TestFile     string        `json:"testFile"`
+	TestName     string        `json:"testName"`
+	BuildCommand string        `json:"buildCommand"`
+	BuildOutput  string        `json:"buildOutput"`
+	DebugBinary  string        `json:"debugBinary"`
+	Process      *Process      `json:"process"`
+	TestFlags    []string      `json:"testFlags"`
 }
 
 // Process represents a debugged process with LLM-friendly additions
