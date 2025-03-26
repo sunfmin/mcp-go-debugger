@@ -21,6 +21,16 @@ type DebugContext struct {
 	Threads          []Thread   `json:"threads,omitempty"`          // Human-readable thread states
 	Goroutine        *Goroutine `json:"goroutine,omitempty"`        // Current goroutine state in human terms
 	OperationSummary string     `json:"operationSummary,omitempty"` // Summary of current operation for LLM
+	NextSteps        []string   `json:"nextSteps,omitempty"`        // Available next debugging actions
+	ProcessInfo      struct {
+		Pid             int      `json:"pid,omitempty"`              // Process ID when attached/launched
+		CommandLine     string   `json:"commandLine,omitempty"`      // Command line of the debugged process
+		Recording       bool     `json:"recording,omitempty"`        // Whether recording is in progress
+		CoreDumping     bool     `json:"coreDumping,omitempty"`     // Whether core dump is in progress
+		NextInProgress  bool     `json:"nextInProgress,omitempty"`   // Whether step operation is in progress
+		WatchOutOfScope int      `json:"watchOutOfScope,omitempty"` // Number of watchpoints that went out of scope
+		RecordingPos    string   `json:"recordingPos,omitempty"`    // Current position in recording
+	} `json:"processInfo,omitempty"` // Process-specific information
 }
 
 // Thread represents a thread in the debugged process with LLM-friendly additions

@@ -193,6 +193,88 @@ func createDebugContext(state *types.DebuggerState) types.DebugContext {
 		context.DelveState = state.DelveState
 		context.Status = getStateStatus(state.DelveState)
 		context.Summary = generateStateSummary(state)
+		
+		// Add current position
+		if state.CurrentThread != nil {
+			context.CurrentPosition = &state.CurrentThread.Location
+		}
+
+		// Add stop reason
+		context.StopReason = state.StateReason
+
+		// Add threads with enhanced information
+		if state.Threads != nil {
+			threads := make([]types.Thread, 0, len(state.Threads))
+			for _, t := range state.Threads {
+				if t != nil {
+					thread := types.Thread{
+						DelveThread: t.DelveThread,
+						ID:         t.ID,
+						Status:     getThreadStatus(t.DelveThread),
+						Location:   t.Location,
+						Active:     t.DelveThread != nil && state.CurrentThread != nil && t.DelveThread.ID == state.CurrentThread.DelveThread.ID,
+						Summary:    fmt.Sprintf("Thread %d: %s at %s", t.ID, getThreadStatus(t.DelveThread), t.Location.Summary),
+					}
+					threads = append(threads, thread)
+				}
+			}
+			context.Threads = threads
+		}
+
+		// Add current goroutine with enhanced information
+		if state.SelectedGoroutine != nil {
+			context.Goroutine = state.SelectedGoroutine
+		}
+
+		// Add operation summary and process info based on state and additional context
+		if state.DelveState != nil {
+			// Populate process info
+			context.ProcessInfo.Pid = state.DelveState.Pid
+			context.ProcessInfo.CommandLine = state.DelveState.TargetCommandLine
+			context.ProcessInfo.Recording = state.DelveState.Recording
+			context.ProcessInfo.CoreDumping = state.DelveState.CoreDumping
+			context.ProcessInfo.NextInProgress = state.DelveState.NextInProgress
+			context.ProcessInfo.WatchOutOfScope = len(state.DelveState.WatchOutOfScope)
+			context.ProcessInfo.RecordingPos = state.DelveState.When
+
+			// Set operation summary based on process state
+			if state.DelveState.Recording {
+				context.OperationSummary = "Recording in progress"
+			} else if state.DelveState.CoreDumping {
+				context.OperationSummary = "Core dump in progress"
+			} else if state.DelveState.NextInProgress {
+				context.OperationSummary = "Step operation in progress"
+			} else if state.Running {
+				context.OperationSummary = fmt.Sprintf("Program %d is running: %s", 
+					state.DelveState.Pid, 
+					state.DelveState.TargetCommandLine)
+			} else if state.Exited {
+				context.OperationSummary = fmt.Sprintf("Program has exited with status %d", state.ExitStatus)
+			} else if state.CurrentThread != nil {
+				context.OperationSummary = fmt.Sprintf("Stopped at %s:%d in %s", 
+					state.CurrentThread.Location.File,
+					state.CurrentThread.Location.Line,
+					state.CurrentThread.Location.Function)
+			}
+
+			// Add next steps based on current state
+			context.NextSteps = getNextSteps(state.DelveState)
+
+			// Add recording position if available
+			if state.DelveState.When != "" {
+				context.Summary += fmt.Sprintf(" (Recording position: %s)", state.DelveState.When)
+			}
+
+			// Add watchpoint information
+			if len(state.DelveState.WatchOutOfScope) > 0 {
+				context.Summary += fmt.Sprintf(" (%d watchpoints went out of scope)", len(state.DelveState.WatchOutOfScope))
+			}
+
+			// Add error information if any
+			if state.Err != nil {
+				context.ErrorMessage = state.Err.Error()
+			}
+		}
 	}
 
 	return context
