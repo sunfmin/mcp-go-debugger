@@ -173,37 +173,6 @@ func getStateReason(state *api.DebuggerState) string {
 	return "process is stopped"
 }
 
-// getNextSteps returns possible next debugging steps based on current state
-func getNextSteps(state *api.DebuggerState) []string {
-	if state == nil {
-		return nil
-	}
-
-	var steps []string
-
-	if state.Exited {
-		steps = append(steps, "restart debugging session")
-		steps = append(steps, "close debugging session")
-		return steps
-	}
-
-	if state.Running {
-		steps = append(steps, "wait for process to stop")
-		steps = append(steps, "interrupt process")
-		return steps
-	}
-
-	steps = append(steps, "continue execution")
-	steps = append(steps, "step into next function")
-	steps = append(steps, "step over next line")
-	steps = append(steps, "step out of current function")
-	steps = append(steps, "set breakpoint")
-	steps = append(steps, "eval variables")
-	steps = append(steps, "list goroutines")
-
-	return steps
-}
-
 // generateStateSummary creates a human-readable summary of the debugger state
 func generateStateSummary(state *api.DebuggerState) string {
 	if state == nil {
@@ -228,8 +197,8 @@ func generateStateSummary(state *api.DebuggerState) string {
 // createDebugContext creates a debug context from a state
 func createDebugContext(state *api.DebuggerState) types.DebugContext {
 	context := types.DebugContext{
-		Timestamp:     time.Now(),
-		LastOperation: "",
+		Timestamp: time.Now(),
+		Operation: "",
 	}
 
 	if state != nil {
@@ -245,68 +214,6 @@ func createDebugContext(state *api.DebuggerState) types.DebugContext {
 
 		// Add stop reason
 		context.StopReason = getStateReason(state)
-
-		// Add threads with enhanced information
-		if state.Threads != nil {
-			threads := make([]types.Thread, 0, len(state.Threads))
-			for _, t := range state.Threads {
-				if t != nil {
-					thread := types.Thread{
-						DelveThread: t,
-						ID:          t.ID,
-						Status:      getThreadStatus(t),
-						Location: types.Location{
-							File:     t.File,
-							Line:     t.Line,
-							Function: getFunctionName(t),
-							Package:  getPackageName(t),
-							Summary:  fmt.Sprintf("At %s:%d in %s", t.File, t.Line, getFunctionName(t)),
-						},
-						Active:  t != nil && state.CurrentThread != nil && t.ID == state.CurrentThread.ID,
-						Summary: fmt.Sprintf("Thread %d: %s at %s", t.ID, getThreadStatus(t), fmt.Sprintf("%s:%d", t.File, t.Line)),
-					}
-					threads = append(threads, thread)
-				}
-			}
-			context.Threads = threads
-		}
-
-		// Add current goroutine with enhanced information
-		if state.SelectedGoroutine != nil {
-			g := state.SelectedGoroutine
-			context.Goroutine = &types.Goroutine{
-				DelveGoroutine: g,
-				ID:             g.ID,
-				Status:         getGoroutineStatus(g),
-				WaitReason:     getWaitReason(g),
-				Location: types.Location{
-					File:     g.CurrentLoc.File,
-					Line:     g.CurrentLoc.Line,
-					Function: g.CurrentLoc.Function.Name(),
-					Package:  strings.Split(g.CurrentLoc.Function.Name(), ".")[0],
-					Summary:  fmt.Sprintf("At %s:%d in %s", g.CurrentLoc.File, g.CurrentLoc.Line, g.CurrentLoc.Function.Name()),
-				},
-				Summary: fmt.Sprintf("Goroutine %d: %s%s at %s",
-					g.ID,
-					getGoroutineStatus(g),
-					func() string {
-						if wr := getWaitReason(g); wr != "" {
-							return " (" + wr + ")"
-						}
-						return ""
-					}(),
-					fmt.Sprintf("%s:%d", g.CurrentLoc.File, g.CurrentLoc.Line)),
-			}
-		}
-
-		// Add operation summary and process info based on state
-		context.ProcessInfo.Pid = state.Pid
-		context.ProcessInfo.CommandLine = state.TargetCommandLine
-		context.ProcessInfo.Recording = state.Recording
-		context.ProcessInfo.CoreDumping = state.CoreDumping
-		context.ProcessInfo.NextInProgress = state.NextInProgress
-		context.ProcessInfo.WatchOutOfScope = len(state.WatchOutOfScope)
-		context.ProcessInfo.RecordingPos = state.When
 
 		// Set operation summary based on process state
 		if state.Recording {
@@ -327,9 +234,6 @@ func createDebugContext(state *api.DebuggerState) types.DebugContext {
 				state.CurrentThread.Line,
 				getFunctionName(state.CurrentThread))
 		}
-
-		// Add next steps based on current state
-		context.NextSteps = getNextSteps(state)
 
 		// Add recording position if available
 		if state.When != "" {
@@ -399,6 +303,10 @@ func getCurrentLocation(state *api.DebuggerState) *types.Location {
 	if state == nil || state.CurrentThread == nil {
 		return nil
 	}
+	if state.CurrentThread.File == "" || state.CurrentThread.Function == nil {
+		return nil
+	}
+
 	return &types.Location{
 		File:     state.CurrentThread.File,
 		Line:     state.CurrentThread.Line,
@@ -411,7 +319,7 @@ func getCurrentLocation(state *api.DebuggerState) *types.Location {
 // createLaunchResponse creates a response for the launch command
 func createLaunchResponse(state *api.DebuggerState, program string, args []string, err error) types.LaunchResponse {
 	context := createDebugContext(state)
-	context.LastOperation = "launch"
+	context.Operation = "launch"
 
 	if err != nil {
 		context.ErrorMessage = err.Error()
@@ -428,7 +336,7 @@ func createLaunchResponse(state *api.DebuggerState, program string, args []strin
 // createAttachResponse creates a response for the attach command
 func createAttachResponse(state *api.DebuggerState, pid int, target string, process *types.Process, err error) types.AttachResponse {
 	context := createDebugContext(state)
-	context.LastOperation = "attach"
+	context.Operation = "attach"
 
 	if err != nil {
 		context.ErrorMessage = err.Error()
@@ -492,7 +400,7 @@ func createEvalVariableResponse(state *api.DebuggerState, variable *types.Variab
 // createDebugSourceResponse creates a response for the debug source command
 func createDebugSourceResponse(state *api.DebuggerState, sourceFile string, debugBinary string, args []string, err error) types.DebugSourceResponse {
 	context := createDebugContext(state)
-	context.LastOperation = "debug_source"
+	context.Operation = "debug_source"
 
 	if err != nil {
 		context.ErrorMessage = err.Error()
@@ -510,7 +418,7 @@ func createDebugSourceResponse(state *api.DebuggerState, sourceFile string, debu
 // createDebugTestResponse creates a response for the debug test command
 func createDebugTestResponse(state *api.DebuggerState, testFile string, testName string, debugBinary string, process *types.Process, testFlags []string, err error) types.DebugTestResponse {
 	context := createDebugContext(state)
-	context.LastOperation = "debug_test"
+	context.Operation = "debug_test"
 
 	if err != nil {
 		context.ErrorMessage = err.Error()

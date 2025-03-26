@@ -11,54 +11,14 @@ type DebugContext struct {
 	DelveState      *api.DebuggerState `json:"-"`                         // Internal Delve state
 	CurrentPosition *Location          `json:"currentPosition,omitempty"` // Current execution position
 	Timestamp       time.Time          `json:"timestamp"`                 // Operation timestamp
-	LastOperation   string             `json:"lastOperation,omitempty"`   // Last debug operation performed
+	Operation       string             `json:"operation,omitempty"`       // Last debug operation performed
 	ErrorMessage    string             `json:"error,omitempty"`           // Error message if any
 	Status          string             `json:"status,omitempty"`          // Current status of the debug session
 	Summary         string             `json:"summary,omitempty"`         // Summary of the current state
 
 	// LLM-friendly additions
-	StopReason       string     `json:"stopReason,omitempty"`       // Why the program stopped, in human terms
-	Threads          []Thread   `json:"threads,omitempty"`          // Human-readable thread states
-	Goroutine        *Goroutine `json:"goroutine,omitempty"`        // Current goroutine state in human terms
-	OperationSummary string     `json:"operationSummary,omitempty"` // Summary of current operation for LLM
-	NextSteps        []string   `json:"nextSteps,omitempty"`        // Available next debugging actions
-	ProcessInfo      struct {
-		Pid             int    `json:"pid,omitempty"`             // Process ID when attached/launched
-		CommandLine     string `json:"commandLine,omitempty"`     // Command line of the debugged process
-		Recording       bool   `json:"recording,omitempty"`       // Whether recording is in progress
-		CoreDumping     bool   `json:"coreDumping,omitempty"`     // Whether core dump is in progress
-		NextInProgress  bool   `json:"nextInProgress,omitempty"`  // Whether step operation is in progress
-		WatchOutOfScope int    `json:"watchOutOfScope,omitempty"` // Number of watchpoints that went out of scope
-		RecordingPos    string `json:"recordingPos,omitempty"`    // Current position in recording
-	} `json:"processInfo,omitempty"` // Process-specific information
-}
-
-// Thread represents a thread in the debugged process with LLM-friendly additions
-type Thread struct {
-	// Internal Delve thread - not exposed in JSON
-	DelveThread *api.Thread `json:"-"`
-
-	// LLM-friendly fields
-	ID       int      `json:"id"`       // Thread ID
-	Status   string   `json:"status"`   // Thread status in human terms (running, blocked, etc)
-	Location Location `json:"location"` // Current location in human-readable format
-	Active   bool     `json:"active"`   // Whether this thread is currently executing
-	Summary  string   `json:"summary"`  // Brief description of thread state for LLM
-}
-
-// Goroutine represents a goroutine with LLM-friendly additions
-type Goroutine struct {
-	// Internal Delve goroutine - not exposed in JSON
-	DelveGoroutine *api.Goroutine `json:"-"`
-
-	// LLM-friendly fields
-	ID         int64    `json:"id"`                     // Goroutine ID
-	Status     string   `json:"status"`                 // Status in human terms (running, waiting, blocked)
-	WaitReason string   `json:"waitReason,omitempty"`   // Why goroutine is waiting, in plain English
-	Location   Location `json:"location"`               // Current location
-	CreatedAt  Location `json:"createdAt,omitempty"`    // Where the goroutine was created
-	UserLoc    Location `json:"userLocation,omitempty"` // User-level location (stripped of runtime calls)
-	Summary    string   `json:"summary"`                // Brief description for LLM
+	StopReason       string `json:"stopReason,omitempty"`       // Why the program stopped, in human terms
+	OperationSummary string `json:"operationSummary,omitempty"` // Summary of current operation for LLM
 }
 
 // Location represents a source code location in human-readable format

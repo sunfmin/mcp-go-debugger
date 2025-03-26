@@ -21,11 +21,11 @@ func (c *Client) GetDebuggerOutput() types.DebuggerOutputResponse {
 		return types.DebuggerOutputResponse{
 			Status: "error",
 			Context: types.DebugContext{
-				Timestamp:     time.Now(),
-				LastOperation: "get_output",
-				ErrorMessage:  "no active debug session",
-				Status:        "disconnected",
-				Summary:       "No active debug session",
+				Timestamp:    time.Now(),
+				Operation:    "get_output",
+				ErrorMessage: "no active debug session",
+				Status:       "disconnected",
+				Summary:      "No active debug session",
 			},
 		}
 	}
@@ -46,11 +46,11 @@ func (c *Client) GetDebuggerOutput() types.DebuggerOutputResponse {
 		return types.DebuggerOutputResponse{
 			Status: "success",
 			Context: types.DebugContext{
-				Timestamp:     time.Now(),
-				LastOperation: "get_output",
-				ErrorMessage:  fmt.Sprintf("state unavailable: %v", err),
-				Status:        "exited",
-				Summary:       "Process has exited but output was captured",
+				Timestamp:    time.Now(),
+				Operation:    "get_output",
+				ErrorMessage: fmt.Sprintf("state unavailable: %v", err),
+				Status:       "exited",
+				Summary:      "Process has exited but output was captured",
 			},
 			Stdout:        stdout,
 			Stderr:        stderr,
@@ -59,7 +59,7 @@ func (c *Client) GetDebuggerOutput() types.DebuggerOutputResponse {
 	}
 
 	context := createDebugContext(state)
-	context.LastOperation = "get_output"
+	context.Operation = "get_output"
 
 	return types.DebuggerOutputResponse{
 		Status:        "success",

@@ -16,9 +16,9 @@ func (c *Client) SetBreakpoint(file string, line int) types.BreakpointResponse {
 			Status: "error",
 			Context: types.DebugContext{
 				ErrorMessage: "no active debug session",
-				Status:      "disconnected",
-				Summary:     "No active debug session",
-				Timestamp:   getCurrentTimestamp(),
+				Status:       "disconnected",
+				Summary:      "No active debug session",
+				Timestamp:    getCurrentTimestamp(),
 			},
 		}
 	}
@@ -34,9 +34,9 @@ func (c *Client) SetBreakpoint(file string, line int) types.BreakpointResponse {
 			Status: "error",
 			Context: types.DebugContext{
 				ErrorMessage: fmt.Sprintf("failed to set breakpoint: %v", err),
-				Status:      "error",
-				Summary:     fmt.Sprintf("Failed to set breakpoint at %s:%d", file, line),
-				Timestamp:   getCurrentTimestamp(),
+				Status:       "error",
+				Summary:      fmt.Sprintf("Failed to set breakpoint at %s:%d", file, line),
+				Timestamp:    getCurrentTimestamp(),
 			},
 		}
 	}
@@ -49,8 +49,8 @@ func (c *Client) SetBreakpoint(file string, line int) types.BreakpointResponse {
 
 	breakpoint := &types.Breakpoint{
 		DelveBreakpoint: bp,
-		ID:             bp.ID,
-		Status:         getBreakpointStatus(bp),
+		ID:              bp.ID,
+		Status:          getBreakpointStatus(bp),
 		Location: types.Location{
 			File:     bp.File,
 			Line:     bp.Line,
@@ -63,7 +63,7 @@ func (c *Client) SetBreakpoint(file string, line int) types.BreakpointResponse {
 	}
 
 	context := createDebugContext(state)
-	context.LastOperation = "set_breakpoint"
+	context.Operation = "set_breakpoint"
 
 	return types.BreakpointResponse{
 		Status:     "success",
@@ -79,9 +79,9 @@ func (c *Client) ListBreakpoints() types.BreakpointListResponse {
 			Status: "error",
 			Context: types.DebugContext{
 				ErrorMessage: "no active debug session",
-				Status:      "disconnected",
-				Summary:     "No active debug session",
-				Timestamp:   getCurrentTimestamp(),
+				Status:       "disconnected",
+				Summary:      "No active debug session",
+				Timestamp:    getCurrentTimestamp(),
 			},
 		}
 	}
@@ -92,9 +92,9 @@ func (c *Client) ListBreakpoints() types.BreakpointListResponse {
 			Status: "error",
 			Context: types.DebugContext{
 				ErrorMessage: fmt.Sprintf("failed to list breakpoints: %v", err),
-				Status:      "error",
-				Summary:     "Failed to list breakpoints",
-				Timestamp:   getCurrentTimestamp(),
+				Status:       "error",
+				Summary:      "Failed to list breakpoints",
+				Timestamp:    getCurrentTimestamp(),
 			},
 		}
 	}
@@ -103,8 +103,8 @@ func (c *Client) ListBreakpoints() types.BreakpointListResponse {
 	for _, bp := range bps {
 		breakpoints = append(breakpoints, types.Breakpoint{
 			DelveBreakpoint: bp,
-			ID:             bp.ID,
-			Status:         getBreakpointStatus(bp),
+			ID:              bp.ID,
+			Status:          getBreakpointStatus(bp),
 			Location: types.Location{
 				File:     bp.File,
 				Line:     bp.Line,
@@ -124,7 +124,7 @@ func (c *Client) ListBreakpoints() types.BreakpointListResponse {
 	}
 
 	context := createDebugContext(state)
-	context.LastOperation = "list_breakpoints"
+	context.Operation = "list_breakpoints"
 
 	return types.BreakpointListResponse{
 		Status:      "success",
@@ -140,9 +140,9 @@ func (c *Client) RemoveBreakpoint(id int) types.BreakpointResponse {
 			Status: "error",
 			Context: types.DebugContext{
 				ErrorMessage: "no active debug session",
-				Status:      "disconnected",
-				Summary:     "No active debug session",
-				Timestamp:   getCurrentTimestamp(),
+				Status:       "disconnected",
+				Summary:      "No active debug session",
+				Timestamp:    getCurrentTimestamp(),
 			},
 		}
 	}
@@ -154,9 +154,9 @@ func (c *Client) RemoveBreakpoint(id int) types.BreakpointResponse {
 			Status: "error",
 			Context: types.DebugContext{
 				ErrorMessage: fmt.Sprintf("failed to get breakpoint info: %v", err),
-				Status:      "error",
-				Summary:     "Failed to get breakpoint information",
-				Timestamp:   getCurrentTimestamp(),
+				Status:       "error",
+				Summary:      "Failed to get breakpoint information",
+				Timestamp:    getCurrentTimestamp(),
 			},
 		}
 	}
@@ -174,9 +174,9 @@ func (c *Client) RemoveBreakpoint(id int) types.BreakpointResponse {
 			Status: "error",
 			Context: types.DebugContext{
 				ErrorMessage: fmt.Sprintf("breakpoint %d not found", id),
-				Status:      "error",
-				Summary:     fmt.Sprintf("Breakpoint %d not found", id),
-				Timestamp:   getCurrentTimestamp(),
+				Status:       "error",
+				Summary:      fmt.Sprintf("Breakpoint %d not found", id),
+				Timestamp:    getCurrentTimestamp(),
 			},
 		}
 	}
@@ -188,9 +188,9 @@ func (c *Client) RemoveBreakpoint(id int) types.BreakpointResponse {
 			Status: "error",
 			Context: types.DebugContext{
 				ErrorMessage: fmt.Sprintf("failed to remove breakpoint: %v", err),
-				Status:      "error",
-				Summary:     fmt.Sprintf("Failed to remove breakpoint %d", id),
-				Timestamp:   getCurrentTimestamp(),
+				Status:       "error",
+				Summary:      fmt.Sprintf("Failed to remove breakpoint %d", id),
+				Timestamp:    getCurrentTimestamp(),
 			},
 		}
 	}
@@ -203,8 +203,8 @@ func (c *Client) RemoveBreakpoint(id int) types.BreakpointResponse {
 
 	breakpoint := types.Breakpoint{
 		DelveBreakpoint: targetBp,
-		ID:             targetBp.ID,
-		Status:         "removed",
+		ID:              targetBp.ID,
+		Status:          "removed",
 		Location: types.Location{
 			File:     targetBp.File,
 			Line:     targetBp.Line,
@@ -217,7 +217,7 @@ func (c *Client) RemoveBreakpoint(id int) types.BreakpointResponse {
 	}
 
 	context := createDebugContext(state)
-	context.LastOperation = "remove_breakpoint"
+	context.Operation = "remove_breakpoint"
 
 	return types.BreakpointResponse{
 		Status:     "success",

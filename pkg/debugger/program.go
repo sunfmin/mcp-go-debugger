@@ -259,8 +259,8 @@ func (c *Client) Close() (*types.CloseResponse, error) {
 		return &types.CloseResponse{
 			Status: "success",
 			Context: types.DebugContext{
-				Timestamp:     time.Now(),
-				LastOperation: "close",
+				Timestamp: time.Now(),
+				Operation: "close",
 			},
 			Summary: "No active debug session to close",
 		}, nil
@@ -328,8 +328,8 @@ func (c *Client) Close() (*types.CloseResponse, error) {
 
 	// Create debug context
 	debugContext := types.DebugContext{
-		Timestamp:     time.Now(),
-		LastOperation: "close",
+		Timestamp: time.Now(),
+		Operation: "close",
 	}
 
 	// Get exit code
