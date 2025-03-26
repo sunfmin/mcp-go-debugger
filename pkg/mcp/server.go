@@ -193,7 +193,7 @@ func (s *MCPDebugServer) addStepOutTool() {
 }
 
 func (s *MCPDebugServer) addEvalVariableTool() {
-	examineVarTool := mcp.NewTool("eval_variable",
+	evalVarTool := mcp.NewTool("eval_variable",
 		mcp.WithDescription("Evaluate the value of a variable"),
 		mcp.WithString("name",
 			mcp.Required(),
@@ -204,7 +204,7 @@ func (s *MCPDebugServer) addEvalVariableTool() {
 		),
 	)
 
-	s.server.AddTool(examineVarTool, s.EvalVariable)
+	s.server.AddTool(evalVarTool, s.EvalVariable)
 }
 
 func (s *MCPDebugServer) addGetDebuggerOutputTool() {

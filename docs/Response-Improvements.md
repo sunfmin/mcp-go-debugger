@@ -10,6 +10,85 @@ This document outlines research and improvements for the MCP Go Debugger tool re
 2. Limited context about debugger state
 3. Missing temporal information about operations
 4. Incomplete variable and execution context
+5. Empty or missing stdout/stderr capture
+6. Inconsistent timestamp formatting
+7. Poor error handling for program termination
+8. Missing variable change tracking between steps
+9. Limited breakpoint categorization and information
+
+## Test Output Analysis
+
+Analysis of the TestDebugWorkflow test output reveals several issues:
+
+1. When getting debugger output, stdout/stderr are empty with an error message: "failed to get state: Process has exited with status 0"
+2. Several responses have null values for fields like ScopeVariables even when variables should be available
+3. Some responses show timestamp as "0001-01-01T00:00:00Z" (zero value) while others have valid timestamps
+4. Error handling for process exit is suboptimal: "continue command failed: Process has exited with status 0"
+5. System breakpoints (IDs -1 and -2) are mixed with user breakpoints without clear differentiation
+6. The ChangedVars field is consistently null even when stepping through code that modifies variables
+7. Debug context has inconsistent information, with some fields populated in some responses but empty in others
+
+## Todo List
+
+1. **Improve Output Capture**
+   - Fix empty stdout/stderr issue when retrieving debugger output
+   - Implement buffering of program output during debugging session
+   - Add structured output capture with timestamps
+   - Include outputSummary for better context
+
+2. **Standardize Response Context**
+   - Ensure all responses include complete debug context
+   - Fix inconsistent timestamp formatting (eliminate zero values)
+   - Add lastOperation field consistently across all responses
+   - Standardize context object structure across all tools
+
+3. **Enhance Variable Information**
+   - Populate ScopeVariables array with all variables in current scope
+   - Track variable changes between steps in changedVars field
+   - Improve variable summaries with human-readable descriptions
+   - Add support for examining complex data structures
+
+4. **Improve Error Handling**
+   - Handle program termination gracefully
+   - Provide better context when processes exit
+   - Include clear error messages in context
+   - Create specific response types for different error conditions
+
+5. **Refine Breakpoint Management**
+   - Better categorize system vs. user breakpoints
+   - Enhance breakpoint information with descriptions
+   - Track and expose breakpoint hit counts consistently
+   - Add support for conditional breakpoints
+
+6. **Enrich Step Execution Feedback**
+   - Add changedVars information when stepping through code
+   - Provide clearer fromLocation and toLocation details
+   - Include operation summaries for each step
+   - Detect entry/exit from functions
+
+7. **Implement Cross-Reference Information**
+   - Add references between related variables
+   - Connect variables to their containing functions
+   - Link breakpoints to relevant variables
+   - Create navigation hints between related code elements
+
+8. **Add Execution Context**
+   - Include thread and goroutine information
+   - Provide stop reasons and next steps suggestions
+   - Add human-readable summaries of program state
+   - Include stack trace information where relevant
+
+9. **Clean Up Response Format**
+   - Remove internal Delve data from JSON output
+   - Ensure consistent structure across all response types
+   - Maintain backward compatibility while improving
+   - Use pointer types for optional fields to reduce null values
+
+10. **Enhance Human and LLM Readability**
+    - Add summary fields to all major components
+    - Ensure all location information includes readable context
+    - Provide clear temporal information about debugging state
+    - Create more descriptive operation names
 
 ## Proposed Response Format
 
@@ -154,7 +233,7 @@ Example JSON responses for each type:
     },
     "reason": "Hit breakpoint in request handler",
     "nextSteps": [
-        "examine request variable",
+        "eval request variable",
         "step into processRequest",
         "continue execution"
     ],
@@ -210,7 +289,7 @@ Example JSON responses for each type:
     ]
 }
 
-// Examine Variable Response Example
+// Eval Variable Response Example
 {
     "status": "success",
     "context": { /* DebugContext object */ },
@@ -291,6 +370,18 @@ Benefits:
 6. Better relationship tracking
 7. Enhanced temporal awareness
 
+## Implementation Priority
+
+Based on test output analysis, these are the highest priority improvements:
+
+1. Fix output capture in GetDebuggerOutput
+2. Ensure consistent timestamp handling
+3. Improve error handling for program termination
+4. Populate ScopeVariables and ChangedVars
+5. Better categorize breakpoints
+6. Standardize context object across all responses
+7. Enhance step execution feedback
+
 ## Modified Tools
 
 The following core tools will be updated to use the new response format:
@@ -307,16 +398,9 @@ The following core tools will be updated to use the new response format:
 10. `step` - Step into
 11. `step_over` - Step over
 12. `step_out` - Step out
-13. `examine_variable` - Examine variable
+13. `eval_variable` - Eval variable
 14. `get_debugger_output` - Get program output
 
-## Simplified Tools
-
-The following tools will be simplified or removed as their functionality is now covered by the context:
-
-1. `get_execution_position` - Covered by context
-2. `list_scope_variables` - Covered by context
-3. `status` - Most information covered by context
 
 ## Implementation Notes
 

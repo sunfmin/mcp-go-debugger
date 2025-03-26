@@ -155,7 +155,7 @@ func getNextSteps(state *api.DebuggerState) []string {
 	steps = append(steps, "step over next line")
 	steps = append(steps, "step out of current function")
 	steps = append(steps, "set breakpoint")
-	steps = append(steps, "examine variables")
+	steps = append(steps, "eval variables")
 	steps = append(steps, "list goroutines")
 
 	return steps

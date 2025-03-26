@@ -47,7 +47,7 @@ MCP Go Debugger is a Model Context Protocol (MCP) server that integrates the Del
 ### 4. State Inspection
 
 - View variable values at breakpoints
-- Examine call stack
+- Eval call stack
 - Inspect goroutines
 - View thread information
 - Evaluate expressions in current context
@@ -101,7 +101,7 @@ The MCP will embed Delve directly:
 User: "I want to debug my Go application in the current directory."
 AI: "I'll help you debug your application. Let me start it with debugging enabled."
 [AI uses MCP Go Debugger to launch the application]
-"I've started your application with debugging enabled. What part of the code would you like to examine?"
+"I've started your application with debugging enabled. What part of the code would you like to eval?"
 ```
 
 #### Example 2: Setting a Breakpoint
@@ -117,7 +117,7 @@ AI: "I'll help debug this issue. Let me set a breakpoint in the processTransacti
 
 ```
 User: "The application crashed when processing this request."
-AI: "Let me examine what's happening when the request is processed."
+AI: "Let me eval what's happening when the request is processed."
 [AI sets breakpoint and application hits it]
 "I can see the issue. The 'amount' variable is negative (-10.5) when it reaches line 42, but the validation check occurs later on line 65."
 ```
@@ -128,7 +128,7 @@ AI: "Let me examine what's happening when the request is processed."
 User: "Can you debug this main.go file for me?"
 AI: "I'll debug your source file directly."
 [AI uses MCP Go Debugger to compile and debug the file]
-"I've compiled and started debugging main.go. Let me set a breakpoint in the main function to examine how the program executes."
+"I've compiled and started debugging main.go. Let me set a breakpoint in the main function to eval how the program executes."
 ```
 
 #### Example 5: Debugging a Single Test
@@ -354,7 +354,7 @@ Exposed MCP commands:
 - `step`: Step to next source line
 - `step_out`: Step out of current function
 - `step_over`: Step over current line
-- `examine_variable`: Examine value of a variable
+- `eval_variable`: Eval value of a variable
 - `list_scope_variables`: List all variables in current scope
 - `list_goroutines`: List all goroutines
 - `stack_trace`: Show stack trace at current position

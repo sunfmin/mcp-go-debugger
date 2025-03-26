@@ -173,7 +173,7 @@ type StepResponse struct {
 type EvalVariableResponse struct {
 	Status    string       `json:"status"`
 	Context   DebugContext `json:"context"`
-	Variable  Variable     `json:"variable"` // The examined variable
+	Variable  Variable     `json:"variable"` // The evald variable
 	ScopeInfo struct {
 		Function string   `json:"function"` // Function where variable is located
 		Package  string   `json:"package"`  // Package where variable is located

@@ -8,7 +8,7 @@ A debugger interface for Go programs that integrates with MCP (Model Context Pro
 - Attach to existing Go processes
 - Set breakpoints
 - Step through code (step into, step over, step out)
-- Examine variables
+- Eval variables
 - View stack traces
 - List all variables in current scope
 - Get current execution position
@@ -91,7 +91,7 @@ This debugger is designed to be integrated with MCP-compatible clients. The tool
 - `step` - Step into the next function call
 - `step_over` - Step over the next function call
 - `step_out` - Step out of the current function
-- `examine_variable` - Examine a variable's value with configurable depth
+- `eval_variable` - Eval a variable's value with configurable depth
 - `list_scope_variables` - List all variables in current scope (local, args, package)
 - `get_execution_position` - Get current execution position (file, line, function)
 - `get_debugger_output` - Retrieve captured stdout and stderr from the debugged program
@@ -109,7 +109,7 @@ Ask the AI assistant to debug your Go program:
 The AI assistant will use the MCP to:
 - Launch the program with debugging enabled
 - Set breakpoints as needed
-- Examine variables and program state
+- Eval variables and program state
 - Help diagnose issues
 
 #### Attaching to a Running Process
@@ -129,7 +129,7 @@ If your Go application is already running, you can attach the debugger:
 
 The AI will help you:
 1. Set breakpoints in the relevant function
-2. Examine variables as execution proceeds
+2. Eval variables as execution proceeds
 3. Identify the root cause of the issue
 
 #### Debugging a Single Test
@@ -145,7 +145,7 @@ The AI assistant will use the `debug_test` tool to:
 - Set breakpoints at key points in the test
 - Help you inspect variables as the test executes
 - Step through the test execution to identify issues
-- Examine assertion failures or unexpected behavior
+- Eval assertion failures or unexpected behavior
 
 You can also specify test flags:
 
@@ -164,12 +164,12 @@ This is especially useful for:
 When working with nested structures or complex types:
 
 ```
-> Can you examine the user.Profile.Preferences object at line 45? I need to see all nested fields in detail.
+> Can you eval the user.Profile.Preferences object at line 45? I need to see all nested fields in detail.
 ```
 
 The AI will:
 - Set a breakpoint at the specified location
-- Use the `examine_variable` tool with appropriate depth parameters
+- Use the `eval_variable` tool with appropriate depth parameters
 - Format the structure for easier understanding
 - Help navigate through nested fields
 
@@ -183,7 +183,7 @@ To debug a program that requires command-line arguments:
 
 The debugger will:
 - Launch the program with the specified arguments
-- Allow you to set breakpoints and examine how the arguments affect execution
+- Allow you to set breakpoints and eval how the arguments affect execution
 - Help track how argument values flow through your program
 
 #### Working with Goroutines
@@ -196,7 +196,7 @@ For debugging concurrent Go programs:
 
 The AI can:
 - Set strategic breakpoints around goroutine creation and synchronization points
-- Help examine channel states and mutex locks
+- Help eval channel states and mutex locks
 - Track goroutine execution to identify race conditions
 - Suggest solutions for concurrency issues
 
@@ -212,7 +212,7 @@ The AI assistant will:
 - Set breakpoints at the entry point
 - Use step-in/step-over commands strategically
 - Show you the execution path
-- Examine variables at key decision points
+- Eval variables at key decision points
 - Explain the program flow
 
 

@@ -71,7 +71,7 @@ This document outlines the detailed tasks for implementing Phase 1 (Core Functio
 
 ### 7. Variable Inspection
 
-- [x] **7.1** [P0] Implement "examine_variable" tool to view variable values *(depends on: 6.1-6.6)*
+- [x] **7.1** [P0] Implement "eval_variable" tool to view variable values *(depends on: 6.1-6.6)*
 - [x] **7.2** [P0] Add support for complex data structures *(depends on: 7.1)*
 - [x] **7.3** [P1] Implement variable formatting and pretty printing *(depends on: 7.1-7.2)*
 - [x] **7.4** [P1] Add support for scope-aware variable lookup *(depends on: 7.1-7.3)*

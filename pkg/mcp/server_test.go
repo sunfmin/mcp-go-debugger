@@ -184,14 +184,14 @@ func TestDebugWorkflow(t *testing.T) {
 	// Allow time for the second breakpoint to be hit
 	time.Sleep(300 * time.Millisecond)
 
-	// Step 8: Examine variable 'n' at the first breakpoint in calculate()
-	examineRequest := mcp.CallToolRequest{}
-	examineRequest.Params.Arguments = map[string]interface{}{
+	// Step 8: Eval variable 'n' at the first breakpoint in calculate()
+	evalRequest := mcp.CallToolRequest{}
+	evalRequest.Params.Arguments = map[string]interface{}{
 		"name":  "n",
 		"depth": float64(1),
 	}
 
-	evalVariableResult, err := server.EvalVariable(ctx, examineRequest)
+	evalVariableResult, err := server.EvalVariable(ctx, evalRequest)
 	evalVariableResponse := &types.EvalVariableResponse{}
 	expectSuccess(t, evalVariableResult, err, evalVariableResponse)
 
@@ -208,14 +208,14 @@ func TestDebugWorkflow(t *testing.T) {
 	// Allow time for the step to complete
 	time.Sleep(200 * time.Millisecond)
 
-	// Step 10: Examine variable 'a' which should be defined now
-	examineRequest2 := mcp.CallToolRequest{}
-	examineRequest2.Params.Arguments = map[string]interface{}{
+	// Step 10: Eval variable 'a' which should be defined now
+	evalRequest2 := mcp.CallToolRequest{}
+	evalRequest2.Params.Arguments = map[string]interface{}{
 		"name":  "a",
 		"depth": float64(1),
 	}
 
-	evalVariableResult2, err := server.EvalVariable(ctx, examineRequest2)
+	evalVariableResult2, err := server.EvalVariable(ctx, evalRequest2)
 	evalVariableResponse2 := &types.EvalVariableResponse{}
 	expectSuccess(t, evalVariableResult2, err, evalVariableResponse2)
 
@@ -407,15 +407,15 @@ func TestDebugTest(t *testing.T) {
 	// Allow time for the breakpoint to be hit
 	time.Sleep(500 * time.Millisecond)
 
-	// First try to examine 't', which should be available in all test functions
-	examineRequest := mcp.CallToolRequest{}
-	examineRequest.Params.Arguments = map[string]interface{}{
+	// First try to eval 't', which should be available in all test functions
+	evalRequest := mcp.CallToolRequest{}
+	evalRequest.Params.Arguments = map[string]interface{}{
 		"name":  "t",
 		"depth": float64(1),
 	}
 
-	examineResult, err := server.EvalVariable(ctx, examineRequest)
-	expectSuccess(t, examineResult, err, &types.EvalVariableResponse{})
+	evalResult, err := server.EvalVariable(ctx, evalRequest)
+	expectSuccess(t, evalResult, err, &types.EvalVariableResponse{})
 
 	// Now try to step once to execute the Add function call
 	stepRequest := mcp.CallToolRequest{}
@@ -426,18 +426,18 @@ func TestDebugTest(t *testing.T) {
 	time.Sleep(200 * time.Millisecond)
 
 	// Now look for result variable, which should be populated after the Add call
-	examineResultVarRequest := mcp.CallToolRequest{}
-	examineResultVarRequest.Params.Arguments = map[string]interface{}{
+	evalResultVarRequest := mcp.CallToolRequest{}
+	evalResultVarRequest.Params.Arguments = map[string]interface{}{
 		"name":  "result",
 		"depth": float64(1),
 	}
 
-	resultVarExamineResult, err := server.EvalVariable(ctx, examineResultVarRequest)
-	var examineResultVarResponse = &types.EvalVariableResponse{}
-	expectSuccess(t, resultVarExamineResult, err, examineResultVarResponse)
+	resultVarEvalResult, err := server.EvalVariable(ctx, evalResultVarRequest)
+	var evalResultVarResponse = &types.EvalVariableResponse{}
+	expectSuccess(t, resultVarEvalResult, err, evalResultVarResponse)
 
-	if examineResultVarResponse.Variable.Value != "5" {
-		t.Fatalf("Expected result to be 5, got %s", examineResultVarResponse.Variable.Value)
+	if evalResultVarResponse.Variable.Value != "5" {
+		t.Fatalf("Expected result to be 5, got %s", evalResultVarResponse.Variable.Value)
 	}
 
 	// Step 6: Continue execution to complete the test
