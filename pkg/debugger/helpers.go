@@ -2,11 +2,8 @@ package debugger
 
 import (
 	"fmt"
-	"strings"
-	"time"
-
 	"github.com/go-delve/delve/service/api"
-	"github.com/sunfmin/mcp-go-debugger/pkg/types"
+	"strings"
 )
 
 // getFunctionName extracts a human-readable function name from various Delve types
@@ -156,66 +153,6 @@ func getStateReason(state *api.DebuggerState) string {
 	return "process is stopped"
 }
 
-// createDebugContext creates a debug context from a state
-func createDebugContext(state *api.DebuggerState) types.DebugContext {
-	context := types.DebugContext{
-		Timestamp: time.Now(),
-		Operation: "",
-	}
-
-	if state != nil {
-		context.DelveState = state
-
-		// Add current position
-		if state.CurrentThread != nil {
-			loc := getCurrentLocation(state)
-			context.CurrentLocation = loc
-		}
-
-		// Add stop reason
-		context.StopReason = getStateReason(state)
-
-	}
-
-	return context
-}
-
-// createContinueResponse creates a ContinueResponse from a DebuggerState
-func createContinueResponse(state *api.DebuggerState, err error) types.ContinueResponse {
-	context := createDebugContext(state)
-	if err != nil {
-		context.ErrorMessage = err.Error()
-		return types.ContinueResponse{
-			Status:  "error",
-			Context: context,
-		}
-	}
-
-	return types.ContinueResponse{
-		Status:  "success",
-		Context: context,
-	}
-}
-
-// createStepResponse creates a StepResponse from a DebuggerState
-func createStepResponse(state *api.DebuggerState, stepType string, fromLocation *string, err error) types.StepResponse {
-	context := createDebugContext(state)
-	if err != nil {
-		context.ErrorMessage = err.Error()
-		return types.StepResponse{
-			Status:  "error",
-			Context: context,
-		}
-	}
-
-	return types.StepResponse{
-		Status:       "success",
-		Context:      context,
-		StepType:     stepType,
-		FromLocation: fromLocation,
-	}
-}
-
 // getCurrentLocation gets the current location from a DebuggerState
 func getCurrentLocation(state *api.DebuggerState) *string {
 	if state == nil || state.CurrentThread == nil {
@@ -232,98 +169,4 @@ func getCurrentLocation(state *api.DebuggerState) *string {
 func getBreakpointLocation(bp *api.Breakpoint) *string {
 	r := fmt.Sprintf("At %s:%d in %s", bp.File, bp.Line, getFunctionNameFromBreakpoint(bp))
 	return &r
-}
-
-// createLaunchResponse creates a response for the launch command
-func createLaunchResponse(state *api.DebuggerState, program string, args []string, err error) types.LaunchResponse {
-	context := createDebugContext(state)
-	context.Operation = "launch"
-
-	if err != nil {
-		context.ErrorMessage = err.Error()
-	}
-
-	return types.LaunchResponse{
-		Context:  &context,
-		Program:  program,
-		Args:     args,
-		ExitCode: 0,
-	}
-}
-
-// createAttachResponse creates a response for the attach command
-func createAttachResponse(state *api.DebuggerState, pid int, target string, process *types.Process, err error) types.AttachResponse {
-	context := createDebugContext(state)
-	context.Operation = "attach"
-
-	if err != nil {
-		context.ErrorMessage = err.Error()
-	}
-
-	return types.AttachResponse{
-		Status:  "success",
-		Context: &context,
-		Pid:     pid,
-		Target:  target,
-		Process: process,
-	}
-}
-
-// createEvalVariableResponse creates an EvalVariableResponse
-func createEvalVariableResponse(state *api.DebuggerState, variable *types.Variable, function, pkg string, locals []string, err error) types.EvalVariableResponse {
-	context := createDebugContext(state)
-	if err != nil {
-		context.ErrorMessage = err.Error()
-		return types.EvalVariableResponse{
-			Status:  "error",
-			Context: context,
-		}
-	}
-
-	return types.EvalVariableResponse{
-		Status:   "success",
-		Context:  context,
-		Variable: *variable,
-		ScopeInfo: struct {
-			Function string   "json:\"function\""
-			Package  string   "json:\"package\""
-			Locals   []string "json:\"locals\""
-		}{
-			Function: function,
-			Package:  pkg,
-			Locals:   locals,
-		},
-	}
-}
-
-// createDebugSourceResponse creates a response for the debug source command
-func createDebugSourceResponse(state *api.DebuggerState, sourceFile string, debugBinary string, args []string, err error) types.DebugSourceResponse {
-	context := createDebugContext(state)
-	context.Operation = "debug_source"
-
-	if err != nil {
-		context.ErrorMessage = err.Error()
-	}
-
-	return types.DebugSourceResponse{
-		Status:      "success",
-		Context:     &context,
-		SourceFile:  sourceFile,
-		DebugBinary: debugBinary,
-		Args:        args,
-	}
-}
-
-// createDebugTestResponse creates a response for the debug test command
-func createDebugTestResponse(state *api.DebuggerState, response *types.DebugTestResponse, err error) types.DebugTestResponse {
-	context := createDebugContext(state)
-	context.Operation = "debug_test"
-	response.Context = &context
-
-	if err != nil {
-		context.ErrorMessage = err.Error()
-		response.Status = "error"
-	}
-
-	return *response
 }

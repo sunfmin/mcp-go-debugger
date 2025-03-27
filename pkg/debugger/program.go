@@ -3,6 +3,7 @@ package debugger
 import (
 	"context"
 	"fmt"
+	"github.com/go-delve/delve/service/api"
 	"net"
 	"os"
 	"path/filepath"
@@ -23,7 +24,7 @@ import (
 // LaunchProgram starts a new program with debugging enabled
 func (c *Client) LaunchProgram(program string, args []string) types.LaunchResponse {
 	if c.client != nil {
-		return createLaunchResponse(nil, program, args, fmt.Errorf("debug session already active"))
+		return c.createLaunchResponse(nil, program, args, fmt.Errorf("debug session already active"))
 	}
 
 	logger.Debug("Starting LaunchProgram for %s", program)
@@ -31,17 +32,17 @@ func (c *Client) LaunchProgram(program string, args []string) types.LaunchRespon
 	// Ensure program file exists and is executable
 	absPath, err := filepath.Abs(program)
 	if err != nil {
-		return createLaunchResponse(nil, program, args, fmt.Errorf("failed to get absolute path: %v", err))
+		return c.createLaunchResponse(nil, program, args, fmt.Errorf("failed to get absolute path: %v", err))
 	}
 
 	if _, err := os.Stat(absPath); os.IsNotExist(err) {
-		return createLaunchResponse(nil, program, args, fmt.Errorf("program file not found: %s", absPath))
+		return c.createLaunchResponse(nil, program, args, fmt.Errorf("program file not found: %s", absPath))
 	}
 
 	// Get an available port for the debug server
 	port, err := getFreePort()
 	if err != nil {
-		return createLaunchResponse(nil, program, args, fmt.Errorf("failed to find available port: %v", err))
+		return c.createLaunchResponse(nil, program, args, fmt.Errorf("failed to find available port: %v", err))
 	}
 
 	// Configure Delve logging
@@ -50,19 +51,19 @@ func (c *Client) LaunchProgram(program string, args []string) types.LaunchRespon
 	// Create a listener for the debug server
 	listener, err := net.Listen("tcp", fmt.Sprintf("localhost:%d", port))
 	if err != nil {
-		return createLaunchResponse(nil, program, args, fmt.Errorf("couldn't start listener: %s", err))
+		return c.createLaunchResponse(nil, program, args, fmt.Errorf("couldn't start listener: %s", err))
 	}
 
 	// Create pipes for stdout and stderr
 	stdoutReader, stdoutRedirect, err := proc.Redirector()
 	if err != nil {
-		return createLaunchResponse(nil, program, args, fmt.Errorf("failed to create stdout redirector: %v", err))
+		return c.createLaunchResponse(nil, program, args, fmt.Errorf("failed to create stdout redirector: %v", err))
 	}
 
 	stderrReader, stderrRedirect, err := proc.Redirector()
 	if err != nil {
 		stdoutRedirect.File.Close()
-		return createLaunchResponse(nil, program, args, fmt.Errorf("failed to create stderr redirector: %v", err))
+		return c.createLaunchResponse(nil, program, args, fmt.Errorf("failed to create stderr redirector: %v", err))
 	}
 
 	// Create Delve config
@@ -88,7 +89,7 @@ func (c *Client) LaunchProgram(program string, args []string) types.LaunchRespon
 	// Create and start the debugging server
 	server := rpccommon.NewServer(config)
 	if server == nil {
-		return createLaunchResponse(nil, program, args, fmt.Errorf("failed to create debug server"))
+		return c.createLaunchResponse(nil, program, args, fmt.Errorf("failed to create debug server"))
 	}
 
 	c.server = server
@@ -115,9 +116,9 @@ func (c *Client) LaunchProgram(program string, args []string) types.LaunchRespon
 	for !connected {
 		select {
 		case <-ctx.Done():
-			return createLaunchResponse(nil, program, args, fmt.Errorf("timed out waiting for debug server to start"))
+			return c.createLaunchResponse(nil, program, args, fmt.Errorf("timed out waiting for debug server to start"))
 		case err := <-serverReady:
-			return createLaunchResponse(nil, program, args, fmt.Errorf("debug server failed to start: %v", err))
+			return c.createLaunchResponse(nil, program, args, fmt.Errorf("debug server failed to start: %v", err))
 		default:
 			client := rpc2.NewClient(addr)
 			state, err := client.GetState()
@@ -126,19 +127,19 @@ func (c *Client) LaunchProgram(program string, args []string) types.LaunchRespon
 				c.target = absPath
 				connected = true
 
-				return createLaunchResponse(state, program, args, nil)
+				return c.createLaunchResponse(state, program, args, nil)
 			}
 			time.Sleep(100 * time.Millisecond)
 		}
 	}
 
-	return createLaunchResponse(nil, program, args, fmt.Errorf("failed to launch program"))
+	return c.createLaunchResponse(nil, program, args, fmt.Errorf("failed to launch program"))
 }
 
 // AttachToProcess attaches to an existing process with the given PID
 func (c *Client) AttachToProcess(pid int) types.AttachResponse {
 	if c.client != nil {
-		return createAttachResponse(nil, pid, "", nil, fmt.Errorf("debug session already active"))
+		return c.createAttachResponse(nil, pid, "", nil, fmt.Errorf("debug session already active"))
 	}
 
 	logger.Debug("Starting AttachToProcess for PID %d", pid)
@@ -146,7 +147,7 @@ func (c *Client) AttachToProcess(pid int) types.AttachResponse {
 	// Get an available port for the debug server
 	port, err := getFreePort()
 	if err != nil {
-		return createAttachResponse(nil, pid, "", nil, fmt.Errorf("failed to find available port: %v", err))
+		return c.createAttachResponse(nil, pid, "", nil, fmt.Errorf("failed to find available port: %v", err))
 	}
 
 	logger.Debug("Setting up Delve logging")
@@ -157,7 +158,7 @@ func (c *Client) AttachToProcess(pid int) types.AttachResponse {
 	// Create a listener for the debug server
 	listener, err := net.Listen("tcp", fmt.Sprintf("localhost:%d", port))
 	if err != nil {
-		return createAttachResponse(nil, pid, "", nil, fmt.Errorf("couldn't start listener: %s", err))
+		return c.createAttachResponse(nil, pid, "", nil, fmt.Errorf("couldn't start listener: %s", err))
 	}
 
 	// Note: When attaching to an existing process, we can't easily redirect its stdout/stderr
@@ -183,7 +184,7 @@ func (c *Client) AttachToProcess(pid int) types.AttachResponse {
 	// Create and start the debugging server with attach to PID
 	server := rpccommon.NewServer(config)
 	if server == nil {
-		return createAttachResponse(nil, pid, "", nil, fmt.Errorf("failed to create debug server"))
+		return c.createAttachResponse(nil, pid, "", nil, fmt.Errorf("failed to create debug server"))
 	}
 
 	c.server = server
@@ -218,10 +219,10 @@ func (c *Client) AttachToProcess(pid int) types.AttachResponse {
 		select {
 		case <-ctx.Done():
 			// Timeout reached
-			return createAttachResponse(nil, pid, "", nil, fmt.Errorf("timed out waiting for debug server to start"))
+			return c.createAttachResponse(nil, pid, "", nil, fmt.Errorf("timed out waiting for debug server to start"))
 		case err := <-serverReady:
 			// Server reported an error
-			return createAttachResponse(nil, pid, "", nil, fmt.Errorf("debug server failed to start: %v", err))
+			return c.createAttachResponse(nil, pid, "", nil, fmt.Errorf("debug server failed to start: %v", err))
 		default:
 			// Try to connect
 			client := rpc2.NewClient(addr)
@@ -235,7 +236,7 @@ func (c *Client) AttachToProcess(pid int) types.AttachResponse {
 				logger.Debug("Successfully attached to process with PID: %d", pid)
 
 				// Get initial state
-				return createAttachResponse(state, pid, "", nil, nil)
+				return c.createAttachResponse(state, pid, "", nil, nil)
 			} else {
 				// Failed, wait briefly and retry
 				time.Sleep(100 * time.Millisecond)
@@ -243,7 +244,7 @@ func (c *Client) AttachToProcess(pid int) types.AttachResponse {
 		}
 	}
 
-	return createAttachResponse(nil, pid, "", nil, fmt.Errorf("failed to attach to process"))
+	return c.createAttachResponse(nil, pid, "", nil, fmt.Errorf("failed to attach to process"))
 }
 
 // Close terminates the debug session
@@ -346,17 +347,17 @@ func (c *Client) Close() (*types.CloseResponse, error) {
 // DebugSourceFile compiles and debugs a Go source file
 func (c *Client) DebugSourceFile(sourceFile string, args []string) types.DebugSourceResponse {
 	if c.client != nil {
-		return createDebugSourceResponse(nil, sourceFile, "", args, fmt.Errorf("debug session already active"))
+		return c.createDebugSourceResponse(nil, sourceFile, "", args, fmt.Errorf("debug session already active"))
 	}
 
 	// Ensure source file exists
 	absPath, err := filepath.Abs(sourceFile)
 	if err != nil {
-		return createDebugSourceResponse(nil, sourceFile, "", args, fmt.Errorf("failed to get absolute path: %v", err))
+		return c.createDebugSourceResponse(nil, sourceFile, "", args, fmt.Errorf("failed to get absolute path: %v", err))
 	}
 
 	if _, err := os.Stat(absPath); os.IsNotExist(err) {
-		return createDebugSourceResponse(nil, sourceFile, "", args, fmt.Errorf("source file not found: %s", absPath))
+		return c.createDebugSourceResponse(nil, sourceFile, "", args, fmt.Errorf("source file not found: %s", absPath))
 	}
 
 	// Generate a unique debug binary name
@@ -370,20 +371,20 @@ func (c *Client) DebugSourceFile(sourceFile string, args []string) types.DebugSo
 		logger.Debug("Build command: %s", cmd)
 		logger.Debug("Build output: %s", string(output))
 		gobuild.Remove(debugBinary)
-		return createDebugSourceResponse(nil, sourceFile, debugBinary, args, fmt.Errorf("failed to compile source file: %v\nOutput: %s", err, string(output)))
+		return c.createDebugSourceResponse(nil, sourceFile, debugBinary, args, fmt.Errorf("failed to compile source file: %v\nOutput: %s", err, string(output)))
 	}
 
 	// Launch the compiled binary with the debugger
 	response := c.LaunchProgram(debugBinary, args)
 	if response.Context.ErrorMessage != "" {
 		gobuild.Remove(debugBinary)
-		return createDebugSourceResponse(nil, sourceFile, debugBinary, args, fmt.Errorf(response.Context.ErrorMessage))
+		return c.createDebugSourceResponse(nil, sourceFile, debugBinary, args, fmt.Errorf(response.Context.ErrorMessage))
 	}
 
 	// Store the binary path for cleanup
 	c.target = debugBinary
 
-	return createDebugSourceResponse(response.Context.DelveState, sourceFile, debugBinary, args, nil)
+	return c.createDebugSourceResponse(response.Context.DelveState, sourceFile, debugBinary, args, nil)
 }
 
 // DebugTest compiles and debugs a Go test function
@@ -394,17 +395,17 @@ func (c *Client) DebugTest(testFilePath string, testName string, testFlags []str
 		TestFlags: testFlags,
 	}
 	if c.client != nil {
-		return createDebugTestResponse(nil, &response, fmt.Errorf("debug session already active"))
+		return c.createDebugTestResponse(nil, &response, fmt.Errorf("debug session already active"))
 	}
 
 	// Ensure test file exists
 	absPath, err := filepath.Abs(testFilePath)
 	if err != nil {
-		return createDebugTestResponse(nil, &response, fmt.Errorf("failed to get absolute path: %v", err))
+		return c.createDebugTestResponse(nil, &response, fmt.Errorf("failed to get absolute path: %v", err))
 	}
 
 	if _, err := os.Stat(absPath); os.IsNotExist(err) {
-		return createDebugTestResponse(nil, &response, fmt.Errorf("test file not found: %s", absPath))
+		return c.createDebugTestResponse(nil, &response, fmt.Errorf("test file not found: %s", absPath))
 	}
 
 	// Get the directory of the test file
@@ -419,12 +420,12 @@ func (c *Client) DebugTest(testFilePath string, testName string, testFlags []str
 	// Save current directory
 	currentDir, err := os.Getwd()
 	if err != nil {
-		return createDebugTestResponse(nil, &response, fmt.Errorf("failed to get current directory: %v", err))
+		return c.createDebugTestResponse(nil, &response, fmt.Errorf("failed to get current directory: %v", err))
 	}
 
 	// Change to test directory
 	if err := os.Chdir(testDir); err != nil {
-		return createDebugTestResponse(nil, &response, fmt.Errorf("failed to change to test directory: %v", err))
+		return c.createDebugTestResponse(nil, &response, fmt.Errorf("failed to change to test directory: %v", err))
 	}
 
 	// Ensure we change back to original directory
@@ -440,7 +441,7 @@ func (c *Client) DebugTest(testFilePath string, testName string, testFlags []str
 	response.BuildOutput = string(output)
 	if err != nil {
 		gobuild.Remove(debugBinary)
-		return createDebugTestResponse(nil, &response, fmt.Errorf("failed to compile test package: %v\nOutput: %s", err, string(output)))
+		return c.createDebugTestResponse(nil, &response, fmt.Errorf("failed to compile test package: %v\nOutput: %s", err, string(output)))
 	}
 
 	// Create args to run the specific test
@@ -464,11 +465,78 @@ func (c *Client) DebugTest(testFilePath string, testName string, testFlags []str
 	response2 := c.LaunchProgram(debugBinary, args)
 	if response2.Context.ErrorMessage != "" {
 		gobuild.Remove(debugBinary)
-		return createDebugTestResponse(nil, &response, fmt.Errorf(response.Context.ErrorMessage))
+		return c.createDebugTestResponse(nil, &response, fmt.Errorf(response.Context.ErrorMessage))
 	}
 
 	// Store the binary path for cleanup
 	c.target = debugBinary
 
-	return createDebugTestResponse(response2.Context.DelveState, &response, nil)
+	return c.createDebugTestResponse(response2.Context.DelveState, &response, nil)
+}
+
+// createLaunchResponse creates a response for the launch command
+func (c *Client) createLaunchResponse(state *api.DebuggerState, program string, args []string, err error) types.LaunchResponse {
+	context := c.createDebugContext(state)
+	context.Operation = "launch"
+
+	if err != nil {
+		context.ErrorMessage = err.Error()
+	}
+
+	return types.LaunchResponse{
+		Context:  &context,
+		Program:  program,
+		Args:     args,
+		ExitCode: 0,
+	}
+}
+
+// createAttachResponse creates a response for the attach command
+func (c *Client) createAttachResponse(state *api.DebuggerState, pid int, target string, process *types.Process, err error) types.AttachResponse {
+	context := c.createDebugContext(state)
+	context.Operation = "attach"
+
+	if err != nil {
+		context.ErrorMessage = err.Error()
+	}
+
+	return types.AttachResponse{
+		Status:  "success",
+		Context: &context,
+		Pid:     pid,
+		Target:  target,
+		Process: process,
+	}
+}
+
+// createDebugSourceResponse creates a response for the debug source command
+func (c *Client) createDebugSourceResponse(state *api.DebuggerState, sourceFile string, debugBinary string, args []string, err error) types.DebugSourceResponse {
+	context := c.createDebugContext(state)
+	context.Operation = "debug_source"
+
+	if err != nil {
+		context.ErrorMessage = err.Error()
+	}
+
+	return types.DebugSourceResponse{
+		Status:      "success",
+		Context:     &context,
+		SourceFile:  sourceFile,
+		DebugBinary: debugBinary,
+		Args:        args,
+	}
+}
+
+// createDebugTestResponse creates a response for the debug test command
+func (c *Client) createDebugTestResponse(state *api.DebuggerState, response *types.DebugTestResponse, err error) types.DebugTestResponse {
+	context := c.createDebugContext(state)
+	context.Operation = "debug_test"
+	response.Context = &context
+
+	if err != nil {
+		context.ErrorMessage = err.Error()
+		response.Status = "error"
+	}
+
+	return *response
 }

@@ -9,13 +9,13 @@ import (
 // DebugContext provides shared context across all debug responses
 type DebugContext struct {
 	DelveState      *api.DebuggerState `json:"-"`                         // Internal Delve state
-	CurrentLocation *string            `json:"currentLocation,omitempty"` // Current execution position
 	Timestamp       time.Time          `json:"timestamp"`                 // Operation timestamp
 	Operation       string             `json:"operation,omitempty"`       // Last debug operation performed
-	ErrorMessage    string             `json:"error,omitempty"`           // Error message if any
-
+	CurrentLocation *string            `json:"currentLocation,omitempty"` // Current execution position
+	LocalVariables  []Variable         `json:"localVariables,omitempty"`
 	// LLM-friendly additions
-	StopReason string `json:"stopReason,omitempty"` // Why the program stopped, in human terms
+	StopReason   string `json:"stopReason,omitempty"` // Why the program stopped, in human terms
+	ErrorMessage string `json:"error,omitempty"`      // Error message if any
 }
 
 // Variable represents a program variable with LLM-friendly additions
@@ -24,14 +24,11 @@ type Variable struct {
 	DelveVar *api.Variable `json:"-"`
 
 	// LLM-friendly fields
-	Name       string   `json:"name"`           // Variable name
-	Value      string   `json:"value"`          // Formatted value in human-readable form
-	Type       string   `json:"type"`           // Type in human-readable format
-	Summary    string   `json:"summary"`        // Brief description for LLM
-	Scope      string   `json:"scope"`          // Variable scope (local, global, etc)
-	Kind       string   `json:"kind"`           // High-level kind description
-	TypeInfo   string   `json:"typeInfo"`       // Human-readable type information
-	References []string `json:"refs,omitempty"` // Related variable references
+	Name  string `json:"name"`  // Variable name
+	Value string `json:"value"` // Formatted value in human-readable form
+	Type  string `json:"type"`  // Type in human-readable format
+	Scope string `json:"scope"` // Variable scope (local, global, etc)
+	Kind  string `json:"kind"`  // High-level kind description
 }
 
 // Breakpoint represents a breakpoint with LLM-friendly additions
@@ -92,14 +89,9 @@ type StepResponse struct {
 }
 
 type EvalVariableResponse struct {
-	Status    string       `json:"status"`
-	Context   DebugContext `json:"context"`
-	Variable  Variable     `json:"variable"` // The evald variable
-	ScopeInfo struct {
-		Function string   `json:"function"` // Function where variable is located
-		Package  string   `json:"package"`  // Package where variable is located
-		Locals   []string `json:"locals"`   // Names of other local variables
-	} `json:"scopeInfo"`
+	Status   string       `json:"status"`
+	Context  DebugContext `json:"context"`
+	Variable Variable     `json:"variable"` // The evald variable
 }
 
 type ContinueResponse struct {

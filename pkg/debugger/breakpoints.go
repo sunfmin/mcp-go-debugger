@@ -51,7 +51,7 @@ func (c *Client) SetBreakpoint(file string, line int) types.BreakpointResponse {
 		HitCount:        uint64(bp.TotalHitCount),
 	}
 
-	context := createDebugContext(state)
+	context := c.createDebugContext(state)
 	context.Operation = "set_breakpoint"
 
 	return types.BreakpointResponse{
@@ -101,7 +101,7 @@ func (c *Client) ListBreakpoints() types.BreakpointListResponse {
 		logger.Debug("Warning: Failed to get state while listing breakpoints: %v", err)
 	}
 
-	context := createDebugContext(state)
+	context := c.createDebugContext(state)
 	context.Operation = "list_breakpoints"
 
 	return types.BreakpointListResponse{
@@ -179,7 +179,7 @@ func (c *Client) RemoveBreakpoint(id int) types.BreakpointResponse {
 		HitCount:        uint64(targetBp.TotalHitCount),
 	}
 
-	context := createDebugContext(state)
+	context := c.createDebugContext(state)
 	context.Operation = "remove_breakpoint"
 
 	return types.BreakpointResponse{

@@ -6,24 +6,23 @@ import (
 	"strings"
 
 	"github.com/go-delve/delve/service/api"
-	"github.com/sunfmin/mcp-go-debugger/pkg/logger"
 	"github.com/sunfmin/mcp-go-debugger/pkg/types"
 )
 
 // EvalVariable evaluates a variable expression
 func (c *Client) EvalVariable(name string, depth int) types.EvalVariableResponse {
 	if c.client == nil {
-		return createEvalVariableResponse(nil, nil, "", "", nil, fmt.Errorf("no active debug session"))
+		return c.createEvalVariableResponse(nil, nil, 0, fmt.Errorf("no active debug session"))
 	}
 
 	// Get current state for context
 	state, err := c.client.GetState()
 	if err != nil {
-		return createEvalVariableResponse(nil, nil, "", "", nil, fmt.Errorf("failed to get state: %v", err))
+		return c.createEvalVariableResponse(nil, nil, 0, fmt.Errorf("failed to get state: %v", err))
 	}
 
 	if state.SelectedGoroutine == nil {
-		return createEvalVariableResponse(state, nil, "", "", nil, fmt.Errorf("no goroutine selected"))
+		return c.createEvalVariableResponse(state, nil, 0, fmt.Errorf("no goroutine selected"))
 	}
 
 	// Evaluate the variable
@@ -38,7 +37,7 @@ func (c *Client) EvalVariable(name string, depth int) types.EvalVariableResponse
 	})
 
 	if err != nil {
-		return createEvalVariableResponse(state, nil, "", "", nil, fmt.Errorf("failed to evaluate variable %s: %v", name, err))
+		return c.createEvalVariableResponse(state, nil, 0, fmt.Errorf("failed to evaluate variable %s: %v", name, err))
 	}
 
 	// Convert to our type
@@ -48,33 +47,9 @@ func (c *Client) EvalVariable(name string, depth int) types.EvalVariableResponse
 		Value:    v.Value,
 		Type:     v.Type,
 		Kind:     getVariableKind(v),
-		TypeInfo: getTypeInfo(v),
-		Summary:  fmt.Sprintf("%s = %s", v.Name, v.Value),
 	}
 
-	// Get scope information
-	var function, pkg string
-	var locals []string
-
-	if state.CurrentThread != nil && state.CurrentThread.Function != nil {
-		function = state.CurrentThread.Function.Name()
-		pkg = getPackageName(state.CurrentThread)
-
-		// Get local variables
-		localVars, err := c.client.ListLocalVariables(api.EvalScope{
-			GoroutineID: state.SelectedGoroutine.ID,
-			Frame:       0,
-		}, api.LoadConfig{})
-		if err != nil {
-			logger.Debug("Warning: Failed to list local variables: %v", err)
-		} else {
-			for _, v := range localVars {
-				locals = append(locals, v.Name)
-			}
-		}
-	}
-
-	return createEvalVariableResponse(state, variable, function, pkg, locals, nil)
+	return c.createEvalVariableResponse(state, variable, depth, nil)
 }
 
 // Helper functions for variable information
@@ -112,115 +87,6 @@ func getVariableKind(v *api.Variable) string {
 	}
 }
 
-func getTypeInfo(v *api.Variable) string {
-	if v == nil {
-		return "unknown"
-	}
-
-	info := v.Type
-	if v.Kind == reflect.Ptr {
-		info += fmt.Sprintf(" (pointing to %s)", v.Type[1:]) // Remove the leading '*'
-	} else if v.Kind == reflect.Array || v.Kind == reflect.Slice {
-		info += fmt.Sprintf(" (length: %d, capacity: %d)", v.Len, v.Cap)
-	}
-
-	return info
-}
-
-// Helper function to convert Delve variables to our type
-func convertVariableToInfo(v api.Variable) *types.Variable {
-	result := &types.Variable{
-		DelveVar: &v,
-		Name:     v.Name,
-		Value:    v.Value,
-		Type:     v.Type,
-		Summary:  generateVariableSummary(v),
-		Scope:    "local", // Default to local scope
-		Kind:     v.Kind.String(),
-		TypeInfo: generateTypeInfo(v),
-	}
-
-	// Add references if this is a pointer or has children
-	if v.Kind == reflect.Ptr || len(v.Children) > 0 {
-		result.References = extractReferences(v)
-	}
-
-	return result
-}
-
-// Helper function to generate a human-readable summary of a variable
-func generateVariableSummary(v api.Variable) string {
-	switch v.Kind {
-	case reflect.Bool:
-		return fmt.Sprintf("Boolean value: %s", v.Value)
-	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-		return fmt.Sprintf("Integer value: %s", v.Value)
-	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
-		return fmt.Sprintf("Unsigned integer value: %s", v.Value)
-	case reflect.Float32, reflect.Float64:
-		return fmt.Sprintf("Floating point value: %s", v.Value)
-	case reflect.String:
-		return fmt.Sprintf("String value: %s", v.Value)
-	case reflect.Ptr:
-		if v.Children == nil || len(v.Children) == 0 {
-			return fmt.Sprintf("Nil pointer of type %s", v.Type)
-		}
-		return fmt.Sprintf("Pointer to %s", v.Type)
-	case reflect.Array, reflect.Slice:
-		return fmt.Sprintf("%s with %d elements", v.Type, v.Len)
-	case reflect.Map:
-		return fmt.Sprintf("Map with %d entries", v.Len)
-	case reflect.Struct:
-		return fmt.Sprintf("Struct of type %s", v.Type)
-	case reflect.Interface:
-		return fmt.Sprintf("Interface of type %s", v.Type)
-	case reflect.Chan:
-		return fmt.Sprintf("Channel of type %s", v.Type)
-	case reflect.Func:
-		return fmt.Sprintf("Function %s", v.Value)
-	default:
-		return fmt.Sprintf("Variable of type %s", v.Type)
-	}
-}
-
-// Helper function to generate detailed type information
-func generateTypeInfo(v api.Variable) string {
-	switch v.Kind {
-	case reflect.Struct:
-		return fmt.Sprintf("Struct with fields: %s", getStructFields(v))
-	case reflect.Map:
-		return fmt.Sprintf("Map[%s]%s", getMapKeyType(v), getMapValueType(v))
-	case reflect.Array, reflect.Slice:
-		return fmt.Sprintf("Array/Slice of %s with length %d", v.Type, v.Len)
-	case reflect.Chan:
-		return fmt.Sprintf("Channel of %s with %d buffer size", v.Type, v.Len)
-	case reflect.Ptr:
-		if v.Children == nil || len(v.Children) == 0 {
-			return "Nil pointer"
-		}
-		return fmt.Sprintf("Pointer to %s at address %s", v.Type, v.Value)
-	default:
-		return v.Type
-	}
-}
-
-// Helper function to extract references from a variable
-func extractReferences(v api.Variable) []string {
-	refs := make([]string, 0)
-
-	if v.Kind == reflect.Ptr {
-		refs = append(refs, fmt.Sprintf("Points to address %s", v.Value))
-	}
-
-	if len(v.Children) > 0 {
-		for _, child := range v.Children {
-			refs = append(refs, fmt.Sprintf("%s: %s", child.Name, child.Type))
-		}
-	}
-
-	return refs
-}
-
 // Helper function to get struct field information
 func getStructFields(v api.Variable) string {
 	if len(v.Children) == 0 {
@@ -248,4 +114,82 @@ func getMapValueType(v api.Variable) string {
 		return "unknown"
 	}
 	return v.Children[1].Type
+}
+
+// getLocalVariables extracts local variables and arguments from the current scope
+func (c *Client) getLocalVariables(state *api.DebuggerState) ([]types.Variable, error) {
+	if state == nil || state.SelectedGoroutine == nil {
+		return nil, fmt.Errorf("no active goroutine")
+	}
+
+	// Create evaluation scope for current frame
+	scope := api.EvalScope{
+		GoroutineID: state.SelectedGoroutine.ID,
+		Frame:       0, // 0 represents the current frame
+	}
+
+	// Default load configuration
+	cfg := api.LoadConfig{
+		FollowPointers:     true,
+		MaxVariableRecurse: 1,
+		MaxStringLen:       64,
+		MaxArrayValues:     64,
+		MaxStructFields:    -1,
+	}
+
+	// Convert Delve variables to our format
+	convertToVariable := func(v *api.Variable, scope string) types.Variable {
+		return types.Variable{
+			DelveVar: v,
+			Name:     v.Name,
+			Value:    v.Value,
+			Type:     v.Type,
+			Scope:    scope,
+			Kind:     getVariableKind(v),
+		}
+	}
+
+	var variables []types.Variable
+
+	// Get function arguments
+	args, err := c.client.ListFunctionArgs(scope, cfg)
+	if err != nil {
+		return nil, fmt.Errorf("error getting function arguments: %v", err)
+	}
+
+	// Get local variables
+	locals, err := c.client.ListLocalVariables(scope, cfg)
+	if err != nil {
+		return nil, fmt.Errorf("error getting local variables: %v", err)
+	}
+
+	// Process arguments first
+	for _, arg := range args {
+		variables = append(variables, convertToVariable(&arg, "argument"))
+	}
+
+	// Process local variables
+	for _, local := range locals {
+		variables = append(variables, convertToVariable(&local, "local"))
+	}
+
+	return variables, nil
+}
+
+// createEvalVariableResponse creates an EvalVariableResponse
+func (c *Client) createEvalVariableResponse(state *api.DebuggerState, variable *types.Variable, depth int, err error) types.EvalVariableResponse {
+	context := c.createDebugContext(state)
+	if err != nil {
+		context.ErrorMessage = err.Error()
+		return types.EvalVariableResponse{
+			Status:  "error",
+			Context: context,
+		}
+	}
+
+	return types.EvalVariableResponse{
+		Status:   "success",
+		Context:  context,
+		Variable: *variable,
+	}
 }

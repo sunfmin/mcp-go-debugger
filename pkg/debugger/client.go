@@ -13,6 +13,7 @@ import (
 	"github.com/go-delve/delve/service/api"
 	"github.com/go-delve/delve/service/rpc2"
 	"github.com/go-delve/delve/service/rpccommon"
+	"github.com/sunfmin/mcp-go-debugger/pkg/types"
 )
 
 // Client encapsulates the Delve debug client functionality
@@ -123,4 +124,32 @@ func (c *Client) captureOutput(reader io.ReadCloser, source string) {
 		}:
 		}
 	}
+}
+
+// createDebugContext creates a debug context from a state
+func (c *Client) createDebugContext(state *api.DebuggerState) types.DebugContext {
+	context := types.DebugContext{
+		Timestamp: time.Now(),
+		Operation: "",
+	}
+
+	if state != nil {
+		context.DelveState = state
+
+		// Add current position
+		if state.CurrentThread != nil {
+			loc := getCurrentLocation(state)
+			context.CurrentLocation = loc
+		}
+
+		// Add stop reason
+		context.StopReason = getStateReason(state)
+
+		// Get local variables if we have a client
+		if c != nil {
+			context.LocalVariables, _ = c.getLocalVariables(state)
+		}
+	}
+
+	return context
 }
