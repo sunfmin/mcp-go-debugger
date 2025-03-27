@@ -9,29 +9,13 @@ import (
 // DebugContext provides shared context across all debug responses
 type DebugContext struct {
 	DelveState      *api.DebuggerState `json:"-"`                         // Internal Delve state
-	CurrentPosition *Location          `json:"currentPosition,omitempty"` // Current execution position
+	CurrentLocation *string            `json:"currentLocation,omitempty"` // Current execution position
 	Timestamp       time.Time          `json:"timestamp"`                 // Operation timestamp
 	Operation       string             `json:"operation,omitempty"`       // Last debug operation performed
 	ErrorMessage    string             `json:"error,omitempty"`           // Error message if any
-	Status          string             `json:"status,omitempty"`          // Current status of the debug session
-	Summary         string             `json:"summary,omitempty"`         // Summary of the current state
 
 	// LLM-friendly additions
-	StopReason       string `json:"stopReason,omitempty"`       // Why the program stopped, in human terms
-	OperationSummary string `json:"operationSummary,omitempty"` // Summary of current operation for LLM
-}
-
-// Location represents a source code location in human-readable format
-type Location struct {
-	// Internal Delve location - not exposed in JSON
-	DelveLocation *api.Location `json:"-"`
-
-	// LLM-friendly fields
-	File     string `json:"file"`               // Source file path
-	Line     int    `json:"line"`               // Line number
-	Function string `json:"function,omitempty"` // Function name in human-readable format
-	Package  string `json:"package,omitempty"`  // Package name for better context
-	Summary  string `json:"summary,omitempty"`  // Human-readable location description
+	StopReason string `json:"stopReason,omitempty"` // Why the program stopped, in human terms
 }
 
 // Variable represents a program variable with LLM-friendly additions
@@ -58,28 +42,11 @@ type Breakpoint struct {
 	// LLM-friendly fields
 	ID          int      `json:"id"`                  // Breakpoint ID
 	Status      string   `json:"status"`              // Enabled/Disabled/etc in human terms
-	Location    Location `json:"location"`            // Breakpoint location
-	Description string   `json:"description"`         // Human-readable description
+	Location    *string  `json:"location"`            // Breakpoint location
 	Variables   []string `json:"variables,omitempty"` // Variables in scope
-	Package     string   `json:"package"`             // Package where breakpoint is set
 	Condition   string   `json:"condition,omitempty"` // Human-readable condition description
 	HitCount    uint64   `json:"hitCount"`            // Number of times breakpoint was hit
 	LastHitInfo string   `json:"lastHit,omitempty"`   // Information about last hit in human terms
-}
-
-// Function represents a function with LLM-friendly additions
-type Function struct {
-	// Internal Delve function - not exposed in JSON
-	DelveFunc *api.Function `json:"-"`
-
-	// LLM-friendly fields
-	Name        string   `json:"name"`              // Function name
-	Signature   string   `json:"signature"`         // Human-readable function signature
-	Parameters  []string `json:"params,omitempty"`  // Parameter names and types in readable format
-	ReturnType  string   `json:"returns,omitempty"` // Return type(s) in readable format
-	Package     string   `json:"package"`           // Package name
-	Description string   `json:"description"`       // Brief function description
-	Location    Location `json:"location"`          // Function location information
 }
 
 // DebuggerOutput represents captured program output with LLM-friendly additions
@@ -120,8 +87,7 @@ type StepResponse struct {
 	Status       string       `json:"status"`
 	Context      DebugContext `json:"context"`
 	StepType     string       `json:"stepType"`    // "into", "over", or "out"
-	FromLocation Location     `json:"from"`        // Starting location
-	ToLocation   Location     `json:"to"`          // Ending location
+	FromLocation *string      `json:"from"`        // Starting location
 	ChangedVars  []Variable   `json:"changedVars"` // Variables that changed during step
 }
 

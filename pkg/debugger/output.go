@@ -24,8 +24,6 @@ func (c *Client) GetDebuggerOutput() types.DebuggerOutputResponse {
 				Timestamp:    time.Now(),
 				Operation:    "get_output",
 				ErrorMessage: "no active debug session",
-				Status:       "disconnected",
-				Summary:      "No active debug session",
 			},
 		}
 	}
@@ -49,8 +47,6 @@ func (c *Client) GetDebuggerOutput() types.DebuggerOutputResponse {
 				Timestamp:    time.Now(),
 				Operation:    "get_output",
 				ErrorMessage: fmt.Sprintf("state unavailable: %v", err),
-				Status:       "exited",
-				Summary:      "Process has exited but output was captured",
 			},
 			Stdout:        stdout,
 			Stderr:        stderr,

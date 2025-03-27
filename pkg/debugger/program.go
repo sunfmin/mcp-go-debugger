@@ -365,7 +365,7 @@ func (c *Client) DebugSourceFile(sourceFile string, args []string) types.DebugSo
 	logger.Debug("Compiling source file %s to %s", absPath, debugBinary)
 
 	// Compile the source file with output capture
-	cmd, output, err := gobuild.GoBuildCombinedOutput(debugBinary, []string{absPath}, "")
+	cmd, output, err := gobuild.GoBuildCombinedOutput(debugBinary, []string{absPath}, "-gcflags all=-N")
 	if err != nil {
 		logger.Debug("Build command: %s", cmd)
 		logger.Debug("Build output: %s", string(output))
@@ -435,7 +435,7 @@ func (c *Client) DebugTest(testFilePath string, testName string, testFlags []str
 	}()
 
 	// Compile the test package with output capture using test-specific build flags
-	cmd, output, err := gobuild.GoTestBuildCombinedOutput(debugBinary, []string{testDir}, "")
+	cmd, output, err := gobuild.GoTestBuildCombinedOutput(debugBinary, []string{testDir}, "-gcflags all=-N")
 	response.BuildCommand = cmd
 	response.BuildOutput = string(output)
 	if err != nil {
