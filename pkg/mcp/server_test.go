@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/mark3labs/mcp-go/mcp"
+	"github.com/pmezard/go-difflib/difflib"
 	"github.com/sunfmin/mcp-go-debugger/pkg/types"
 )
 
@@ -488,4 +489,131 @@ func TestDebugTest(t *testing.T) {
 	expectSuccess(t, closeResult, err, &types.CloseResponse{})
 
 	t.Log("TestDebugTest completed successfully")
+}
+
+func prettyJSONDiff(expected, actual interface{}) string {
+	expectedJSON, _ := json.MarshalIndent(expected, "", "  ")
+	actualJSON, _ := json.MarshalIndent(actual, "", "  ")
+
+	diff := difflib.UnifiedDiff{
+		A:        difflib.SplitLines(string(expectedJSON)),
+		B:        difflib.SplitLines(string(actualJSON)),
+		FromFile: "Expected",
+		ToFile:   "Actual",
+		Context:  3,
+	}
+
+	diffText, err := difflib.GetUnifiedDiffString(diff)
+	if err != nil {
+		return fmt.Sprintf("Failed to generate diff: %v", err)
+	}
+
+	return diffText
+}
+
+func TestEvalComplexVariables(t *testing.T) {
+	// Skip test in short mode
+	if testing.Short() {
+		t.Skip("Skipping integration test in short mode")
+	}
+
+	// Create test file
+	testFile := createComplexTestGoFile(t)
+	//defer os.RemoveAll(filepath.Dir(testFile))
+
+	// Create server
+	server := NewMCPDebugServer("test-version")
+	ctx := context.Background()
+
+	// Launch the debugger
+	launchRequest := mcp.CallToolRequest{}
+	launchRequest.Params.Arguments = map[string]interface{}{
+		"file": testFile,
+		"args": []interface{}{"test-arg1", "test-arg2"},
+	}
+
+	debugResult, err := server.DebugSourceFile(ctx, launchRequest)
+	expectSuccess(t, debugResult, err, &types.DebugSourceResponse{})
+
+	// Give the debugger time to initialize
+	time.Sleep(200 * time.Millisecond)
+
+	// Find line numbers for breakpoints
+	personVarLine := findLineNumber(testFile, "message := person.Greet()")
+	t.Logf("Found person variable declaration at line %d", personVarLine)
+
+	// Set breakpoint at person variable declaration
+	setBreakpointRequest := mcp.CallToolRequest{}
+	setBreakpointRequest.Params.Arguments = map[string]interface{}{
+		"file": testFile,
+		"line": float64(personVarLine),
+	}
+
+	breakpointResult, err := server.SetBreakpoint(ctx, setBreakpointRequest)
+	expectSuccess(t, breakpointResult, err, &types.BreakpointResponse{})
+
+	// Continue to breakpoint
+	continueRequest := mcp.CallToolRequest{}
+	continueResult, err := server.Continue(ctx, continueRequest)
+	expectSuccess(t, continueResult, err, &types.ContinueResponse{})
+
+	// Allow time for breakpoint to be hit
+	time.Sleep(300 * time.Millisecond)
+
+	// Test cases for different variable types
+	testCases := []struct {
+		name        string
+		varName     string
+		depth       int
+		expectedVar types.Variable
+	}{
+		{
+			name:    "Struct variable",
+			varName: "person",
+			depth:   1,
+			expectedVar: types.Variable{
+				Name:  "person",
+				Type:  "main.Person",
+				Scope: "",
+				Kind:  "struct",
+				Value: "{Name:DebugTest, Age:30}",
+			},
+		},
+		{
+			name:    "Struct variable property",
+			varName: "person.Age",
+			depth:   1,
+			expectedVar: types.Variable{
+				Name:  "person.Age",
+				Type:  "int",
+				Scope: "",
+				Kind:  "integer",
+				Value: "30",
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			evalRequest := mcp.CallToolRequest{}
+			evalRequest.Params.Arguments = map[string]interface{}{
+				"name":  tc.varName,
+				"depth": float64(tc.depth),
+			}
+
+			evalResult, err := server.EvalVariable(ctx, evalRequest)
+			var evalResponse = &types.EvalVariableResponse{}
+			expectSuccess(t, evalResult, err, evalResponse)
+
+			diff := prettyJSONDiff(tc.expectedVar, evalResponse.Variable)
+			if diff != "" {
+				t.Errorf("Variable mismatch: %s", diff)
+			}
+		})
+	}
+
+	// Clean up by closing the debug session
+	closeRequest := mcp.CallToolRequest{}
+	closeResult, err := server.Close(ctx, closeRequest)
+	expectSuccess(t, closeResult, err, &types.CloseResponse{})
 }

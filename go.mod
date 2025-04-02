@@ -5,6 +5,7 @@ go 1.23.1
 require (
 	github.com/go-delve/delve v1.24.1
 	github.com/mark3labs/mcp-go v0.15.0
+	github.com/pmezard/go-difflib v1.0.0
 )
 
 require (

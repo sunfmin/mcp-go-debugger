@@ -25,17 +25,23 @@ func (c *Client) EvalVariable(name string, depth int) types.EvalVariableResponse
 		return c.createEvalVariableResponse(state, nil, 0, fmt.Errorf("no goroutine selected"))
 	}
 
-	// Evaluate the variable
-	v, err := c.client.EvalVariable(api.EvalScope{
+	// Create the evaluation scope
+	scope := api.EvalScope{
 		GoroutineID: state.SelectedGoroutine.ID,
 		Frame:       0,
-	}, name, api.LoadConfig{
+	}
+
+	// Configure loading with proper struct field handling
+	loadConfig := api.LoadConfig{
 		FollowPointers:     true,
 		MaxVariableRecurse: depth,
 		MaxStringLen:       1024,
 		MaxArrayValues:     100,
-	})
+		MaxStructFields:    -1, // Load all struct fields
+	}
 
+	// Evaluate the variable
+	v, err := c.client.EvalVariable(scope, name, loadConfig)
 	if err != nil {
 		return c.createEvalVariableResponse(state, nil, 0, fmt.Errorf("failed to evaluate variable %s: %v", name, err))
 	}
@@ -44,9 +50,25 @@ func (c *Client) EvalVariable(name string, depth int) types.EvalVariableResponse
 	variable := &types.Variable{
 		DelveVar: v,
 		Name:     v.Name,
-		Value:    v.Value,
 		Type:     v.Type,
 		Kind:     getVariableKind(v),
+	}
+
+	// Format the value based on the variable kind
+	if v.Kind == reflect.Struct {
+		// For struct types, format fields
+		if len(v.Children) > 0 {
+			fields := make([]string, 0, len(v.Children))
+			for _, field := range v.Children {
+				fieldStr := fmt.Sprintf("%s:%s", field.Name, field.Value)
+				fields = append(fields, fieldStr)
+			}
+			variable.Value = "{" + strings.Join(fields, ", ") + "}"
+		} else {
+			variable.Value = "{}" // Empty struct
+		}
+	} else {
+		variable.Value = v.Value
 	}
 
 	return c.createEvalVariableResponse(state, variable, depth, nil)
@@ -139,10 +161,29 @@ func (c *Client) getLocalVariables(state *api.DebuggerState) ([]types.Variable, 
 
 	// Convert Delve variables to our format
 	convertToVariable := func(v *api.Variable, scope string) types.Variable {
+		var value string
+
+		// Format the value based on the variable kind
+		if v.Kind == reflect.Struct {
+			// For struct types, format fields
+			if len(v.Children) > 0 {
+				fields := make([]string, 0, len(v.Children))
+				for _, field := range v.Children {
+					fieldStr := fmt.Sprintf("%s:%s", field.Name, field.Value)
+					fields = append(fields, fieldStr)
+				}
+				value = "{" + strings.Join(fields, ", ") + "}"
+			} else {
+				value = "{}" // Empty struct
+			}
+		} else {
+			value = v.Value
+		}
+
 		return types.Variable{
 			DelveVar: v,
 			Name:     v.Name,
-			Value:    v.Value,
+			Value:    value,
 			Type:     v.Type,
 			Scope:    scope,
 			Kind:     getVariableKind(v),
