@@ -570,7 +570,7 @@ func TestEvalComplexVariables(t *testing.T) {
 		{
 			name:    "Struct variable",
 			varName: "person",
-			depth:   1,
+			depth:   2,
 			expectedVar: types.Variable{
 				Name:  "person",
 				Type:  "main.Person",
@@ -589,6 +589,18 @@ func TestEvalComplexVariables(t *testing.T) {
 				Scope: "",
 				Kind:  "integer",
 				Value: "30",
+			},
+		},
+		{
+			name:    "Slice variable",
+			varName: "args",
+			depth:   1,
+			expectedVar: types.Variable{
+				Name:  "args",
+				Type:  "[]string",
+				Scope: "",
+				Kind:  "array",
+				Value: "[test-arg1, test-arg2]",
 			},
 		},
 	}

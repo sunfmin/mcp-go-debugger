@@ -67,6 +67,17 @@ func (c *Client) EvalVariable(name string, depth int) types.EvalVariableResponse
 		} else {
 			variable.Value = "{}" // Empty struct
 		}
+	} else if v.Kind == reflect.Array || v.Kind == reflect.Slice {
+		// For array or slice types, format elements
+		if len(v.Children) > 0 {
+			elements := make([]string, 0, len(v.Children))
+			for _, element := range v.Children {
+				elements = append(elements, element.Value)
+			}
+			variable.Value = "[" + strings.Join(elements, ", ") + "]"
+		} else {
+			variable.Value = "[]" // Empty array or slice
+		}
 	} else {
 		variable.Value = v.Value
 	}
@@ -175,6 +186,17 @@ func (c *Client) getLocalVariables(state *api.DebuggerState) ([]types.Variable, 
 				value = "{" + strings.Join(fields, ", ") + "}"
 			} else {
 				value = "{}" // Empty struct
+			}
+		} else if v.Kind == reflect.Array || v.Kind == reflect.Slice {
+			// For array or slice types, format elements
+			if len(v.Children) > 0 {
+				elements := make([]string, 0, len(v.Children))
+				for _, element := range v.Children {
+					elements = append(elements, element.Value)
+				}
+				value = "[" + strings.Join(elements, ",") + "]"
+			} else {
+				value = "[]" // Empty array or slice
 			}
 		} else {
 			value = v.Value
